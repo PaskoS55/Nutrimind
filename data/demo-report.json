@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "0.1.1-draft",
+  "profileId": "demo-professional-hockey-01",
+  "isDemonstration": true,
+  "notice": "Расчётный стартовый ориентир. Не является медицинским заключением или измеренной потребностью.",
+  "calculationTrace": [
+    {
+      "answer": "Мужчина, 28 лет, 189 см, 86 кг",
+      "rule": "Mifflin-St Jeor",
+      "coefficient": null,
+      "result": "REE 1906,25 ккал"
+    },
+    {
+      "answer": "Профессиональный спортсмен, одна тренировка 90 минут",
+      "rule": "Демонстрационный PAL тренировочного дня",
+      "coefficient": 2,
+      "result": "EnergyStart 3800 ккал после округления до 50"
+    },
+    {
+      "answer": "Аллергия на арахис",
+      "rule": "Жёсткий аллергенный фильтр",
+      "coefficient": 0,
+      "result": "Арахис, его ингредиенты и возможные следы исключены до рейтинга"
+    }
+  ],
+  "macroScenarios": [
+    {
+      "id": "lower",
+      "energyKcal": 3550,
+      "proteinG": 154.8,
+      "fatG": 78.9,
+      "carbohydrateG": 555.2,
+      "macroEnergyKcal": 3550.1
+    },
+    {
+      "id": "central",
+      "energyKcal": 3800,
+      "proteinG": 163.4,
+      "fatG": 86,
+      "carbohydrateG": 593.1,
+      "macroEnergyKcal": 3800
+    },
+    {
+      "id": "upper",
+      "energyKcal": 4050,
+      "proteinG": 172,
+      "fatG": 94.6,
+      "carbohydrateG": 627.7,
+      "macroEnergyKcal": 4050.2
+    }
+  ],
+  "hydration": {
+    "totalWaterIntake": "requires_separate_food_and_beverage_estimate",
+    "beverageWater": "1.5–2.0 л по ответу пользователя",
+    "trainingFluid": "требует расчёта по длительности и условиям",
+    "sweatRate": "not_measured"
+  },
+  "priorities": [
+    {
+      "id": "post_training_meal",
+      "reason": "Полноценный приём пищи происходит позже 90 минут после вечерней тренировки.",
+      "recommendation": "Запланировать доступный приём пищи после нагрузки."
+    },
+    {
+      "id": "diet_regular_protein",
+      "reason": "Белковый продукт отмечен только два раза в день при высокой тренировочной нагрузке.",
+      "recommendation": "Распределить подходящие источники белка между основными приёмами пищи."
+    },
+    {
+      "id": "hydration_review",
+      "reason": "Отмечены 1,5–2 л напитков и выраженное потоотделение.",
+      "recommendation": "Провести 14-дневное наблюдение и при возможности измерить индивидуальный sweat rate."
+    }
+  ],
+  "safety": {
+    "allergenFilter": "peanut_blocked",
+    "medicalDecision": "allowed",
+    "deficiencyClaims": "not_available_without_numeric_labs",
+    "weightReduction": "disabled_pending_safety_screen",
+    "calibrationWindowDays": 14
+  }
+}

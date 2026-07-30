@@ -1,0 +1,239 @@
+{
+  "schemaVersion": "0.1.1-draft",
+  "source": "docs/NUTRIMIND_SURVEY_SPEC.md",
+  "sectionCount": 9,
+  "status": "approved_structure_not_fully_wired_to_ui",
+  "sections": [
+    {
+      "id": "profile",
+      "number": 1,
+      "title": "Профиль",
+      "questions": [
+        {
+          "id": "userType",
+          "type": "single",
+          "label": "К какой группе вы относитесь?",
+          "options": ["athlete", "general_user"],
+          "required": true
+        },
+        {
+          "id": "ageGroup",
+          "type": "single",
+          "label": "Возрастная группа",
+          "options": ["adult", "minor"],
+          "required": true
+        }
+      ],
+      "branches": [
+        {
+          "when": { "ageGroup": "minor" },
+          "then": ["enable_guardian_participation", "disable_numeric_macros_without_specialist"]
+        },
+        {
+          "when": { "userType": "athlete" },
+          "then": ["show_sport_branch"]
+        },
+        {
+          "when": { "userType": "general_user" },
+          "then": ["show_general_wellness_branch"]
+        }
+      ]
+    },
+    {
+      "id": "baseline",
+      "number": 2,
+      "title": "Исходные данные",
+      "questions": [
+        { "id": "ageYears", "type": "number", "label": "Возраст", "required": true },
+        {
+          "id": "sexForFormula",
+          "type": "single",
+          "label": "Пол для расчётной формулы",
+          "options": ["female", "male"],
+          "required": true
+        },
+        { "id": "heightCm", "type": "number", "label": "Рост, см", "required": true },
+        { "id": "weightKg", "type": "number", "label": "Масса тела, кг", "required": true },
+        {
+          "id": "guardianRole",
+          "type": "single",
+          "label": "Кто заполняет анкету?",
+          "options": ["parent", "legal_guardian", "athlete_with_parent"],
+          "requiredWhen": { "ageGroup": "minor" }
+        }
+      ]
+    },
+    {
+      "id": "sport_and_goal",
+      "number": 3,
+      "title": "Спорт и цель",
+      "questions": [
+        {
+          "id": "athleteGoal",
+          "type": "single",
+          "label": "Главная цель",
+          "options": ["performance_and_recovery", "muscle_gain", "body_composition", "balanced_nutrition"],
+          "visibleWhen": { "userType": "athlete" }
+        },
+        {
+          "id": "sportType",
+          "type": "single",
+          "label": "Вид спорта",
+          "options": ["hockey", "volleyball", "football", "combat", "endurance", "strength", "other"],
+          "visibleWhen": { "userType": "athlete" }
+        },
+        {
+          "id": "sportLevel",
+          "type": "single",
+          "label": "Уровень",
+          "options": ["professional", "competitive", "amateur"],
+          "visibleWhen": { "userType": "athlete" }
+        },
+        {
+          "id": "sessionsPerWeek",
+          "type": "single",
+          "label": "Тренировок в неделю",
+          "options": ["1_2", "3_4", "5_6", "7_plus"],
+          "visibleWhen": { "userType": "athlete" }
+        },
+        {
+          "id": "typicalSessionMinutes",
+          "type": "number",
+          "label": "Обычная длительность тренировки",
+          "visibleWhen": { "userType": "athlete" }
+        },
+        {
+          "id": "doubleTrainingDays",
+          "type": "boolean",
+          "label": "Бывают две тренировки в день?",
+          "visibleWhen": { "userType": "athlete" }
+        },
+        {
+          "id": "generalGoal",
+          "type": "single",
+          "label": "Главная цель",
+          "options": ["balanced_nutrition", "health_support", "muscle_gain", "weight_change"],
+          "visibleWhen": { "userType": "general_user" }
+        },
+        {
+          "id": "dailyActivity",
+          "type": "single",
+          "label": "Повседневная активность",
+          "options": ["low", "moderate", "high"],
+          "visibleWhen": { "userType": "general_user" }
+        }
+      ]
+    },
+    {
+      "id": "safety",
+      "number": 4,
+      "title": "Безопасность",
+      "questions": [
+        {
+          "id": "allergies",
+          "type": "multi_exclusive_none",
+          "label": "Аллергии",
+          "options": ["none", "milk", "egg", "peanut", "tree_nut", "fish", "seafood", "wheat", "soy", "sesame", "other"],
+          "hardFilter": true
+        },
+        {
+          "id": "otherAllergy",
+          "type": "text",
+          "label": "Уточните другую аллергию",
+          "requiredWhen": { "allergies": "other" },
+          "unresolvedBehavior": "block_automatic_products_and_menu"
+        },
+        {
+          "id": "intolerances",
+          "type": "multi_exclusive_none",
+          "label": "Непереносимости",
+          "options": ["none", "lactose", "gluten", "fructose", "legumes", "other"]
+        },
+        {
+          "id": "medicalRestrictions",
+          "type": "multi_exclusive_none",
+          "label": "Медицинские ограничения",
+          "options": ["none", "celiac", "carbohydrate_metabolism", "kidney", "gastrointestinal", "lipid_metabolism", "high_blood_pressure", "other"]
+        },
+        { "id": "doctorInstructions", "type": "text", "label": "Рекомендации врача" },
+        { "id": "dislikedFoods", "type": "list", "label": "Нелюбимые продукты" },
+        { "id": "selfExcludedFoods", "type": "list", "label": "Самостоятельно исключённые продукты" }
+      ],
+      "priority": ["allergies", "medicalRestrictions", "intolerances", "selfExcludedFoods", "dislikedFoods"]
+    },
+    {
+      "id": "current_diet",
+      "number": 5,
+      "title": "Текущее питание",
+      "questions": [
+        { "id": "mainMealsPerDay", "type": "single", "options": ["1_2", "3", "4", "5_plus"] },
+        { "id": "breakfast", "type": "single", "options": ["almost_always", "sometimes", "skip"] },
+        { "id": "proteinServingsPerDay", "type": "single", "options": ["1", "2", "3", "4_plus"] },
+        { "id": "fruitVegetablePortionsPerDay", "type": "single", "options": ["0_1", "2", "3_4", "5_plus"] },
+        { "id": "fishPerWeek", "type": "single", "options": ["0", "1", "2_plus"] },
+        { "id": "eatingOutPerWeek", "type": "single", "options": ["rare", "1_2", "3_plus"] }
+      ]
+    },
+    {
+      "id": "load_timing",
+      "number": 6,
+      "title": "Режим вокруг нагрузки",
+      "questions": [
+        { "id": "trainingTime", "type": "single", "options": ["morning", "day", "evening"], "visibleWhen": { "userType": "athlete" } },
+        { "id": "preTrainingMeal", "type": "single", "options": ["yes", "sometimes", "no"], "visibleWhen": { "userType": "athlete" } },
+        { "id": "postTrainingMealTiming", "type": "single", "options": ["within_60", "60_90", "later_than_90"], "visibleWhen": { "userType": "athlete" } },
+        { "id": "hardestDayPeriod", "type": "single", "options": ["morning", "day", "evening"], "visibleWhen": { "userType": "general_user" } },
+        { "id": "unplannedSnacks", "type": "single", "options": ["rare", "sometimes", "often"], "visibleWhen": { "userType": "general_user" } }
+      ]
+    },
+    {
+      "id": "wellbeing",
+      "number": 7,
+      "title": "Самочувствие",
+      "questions": [
+        { "id": "sleepHours", "type": "single", "options": ["under_6", "6_7", "7_9", "over_9"] },
+        { "id": "sleepQuality", "type": "single", "options": ["good", "average", "poor"] },
+        { "id": "energy", "type": "single", "options": ["stable", "drops", "often_low", "varies"] },
+        { "id": "digestionSymptoms", "type": "multi", "options": ["none", "bloating", "reflux", "constipation", "loose_stool", "post_meal_pain"] }
+      ],
+      "rules": ["symptoms_never_create_diagnosis", "regular_symptoms_add_specialist_notice"]
+    },
+    {
+      "id": "hydration",
+      "number": 8,
+      "title": "Гидратация",
+      "questions": [
+        { "id": "dailyBeveragesLiters", "type": "single", "options": ["under_1_5", "1_5_2", "2_3", "over_3"] },
+        { "id": "sweating", "type": "single", "options": ["low", "moderate", "high"], "visibleWhen": { "userType": "athlete" } },
+        { "id": "trainingDrink", "type": "single", "options": ["none", "water", "electrolyte", "carbohydrate_electrolyte"], "visibleWhen": { "userType": "athlete" } }
+      ],
+      "rules": ["separate_total_water_beverages_training_fluid_and_sweat_rate"]
+    },
+    {
+      "id": "labs_and_context",
+      "number": 9,
+      "title": "Анализы и контекст",
+      "questions": [
+        {
+          "id": "availableLabs",
+          "type": "multi",
+          "options": ["none_recent", "cbc", "ferritin_iron", "vitamin_d", "b12_folate", "glucose_hba1c", "lipids", "kidney_liver"]
+        },
+        { "id": "labAge", "type": "single", "options": ["under_3_months", "3_6_months", "over_6_months", "unknown"] },
+        { "id": "supplements", "type": "list" },
+        { "id": "medications", "type": "list" },
+        { "id": "informationalConsent", "type": "boolean", "required": true }
+      ],
+      "rules": [
+        "no_confirmed_deficiency_without_numeric_labs",
+        "minor_or_medical_restriction_requires_specialist_notice"
+      ]
+    }
+  ],
+  "pendingApprovalQuestions": [
+    "average_daily_steps",
+    "household_activity",
+    "training_rpe",
+    "duration_of_each_session_on_double_day"
+  ]
+}

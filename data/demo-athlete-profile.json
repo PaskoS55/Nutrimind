@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "0.1.1-draft",
+  "profileId": "demo-professional-hockey-01",
+  "isDemonstration": true,
+  "profile": {
+    "userType": "athlete",
+    "ageGroup": "adult",
+    "ageYears": 28,
+    "sexForFormula": "male",
+    "heightCm": 189,
+    "weightKg": 86
+  },
+  "sport": {
+    "goal": "performance_and_recovery",
+    "type": "hockey",
+    "level": "professional",
+    "sessionsPerWeek": "5_6",
+    "typicalSessionMinutes": 90,
+    "doubleTrainingDays": false
+  },
+  "safety": {
+    "allergies": ["peanut"],
+    "intolerances": ["lactose"],
+    "medicalRestrictions": [],
+    "doctorInstructions": null,
+    "dislikedFoods": [],
+    "selfExcludedFoods": []
+  },
+  "currentDiet": {
+    "mainMealsPerDay": "3",
+    "breakfast": "almost_always",
+    "proteinServingsPerDay": "2",
+    "fruitVegetablePortionsPerDay": "2",
+    "fishPerWeek": "1",
+    "eatingOutPerWeek": "1_2"
+  },
+  "trainingNutrition": {
+    "trainingTime": "evening",
+    "mealOneToThreeHoursBefore": true,
+    "postTrainingMealTiming": "later_than_90_minutes"
+  },
+  "wellbeing": {
+    "sleepHours": "6_7",
+    "sleepQuality": "average",
+    "energy": "noticeable_drops",
+    "digestionSymptoms": []
+  },
+  "hydration": {
+    "dailyBeveragesLiters": "1_5_2",
+    "sweating": "high",
+    "trainingDrink": "water"
+  },
+  "labsAndContext": {
+    "availableLabs": ["none_recent"],
+    "labAge": null,
+    "supplements": [],
+    "medications": [],
+    "informationalConsent": true
+  }
+}

@@ -1,0 +1,134 @@
+diff --git a/docs/CALCULATION_CORE_SPEC.md b/docs/CALCULATION_CORE_SPEC.md
+--- a/docs/CALCULATION_CORE_SPEC.md
++++ b/docs/CALCULATION_CORE_SPEC.md
+@@
+-Версия: `0.1-draft`
+-Статус: на утверждение
++Версия: `0.1.1-draft`
++Статус: архитектурная основа для проверки; не для публикации и реальных пользователей
+@@
+-TEE_center = REE × PAL_day
+-TEE_low = округление_50(TEE_center − 100)
+-TEE_high = округление_50(TEE_center + 100)
+-
+-Результат показывается диапазоном вокруг расчётной величины.
++EnergyStart_raw = REE_unrounded × PAL_demo
++EnergyStart = округление_50(EnergyStart_raw)
++
++Результат показывается как расчётный стартовый ориентир, а не как
++измеренная потребность или доверительный интервал.
+@@
+-| Изменение состава тела спортсмена | понижающий множитель | применяется автоматически |
+-| Снижение массы обычного пользователя | понижающий множитель | применяется автоматически |
++| Изменение состава тела спортсмена | автоматическое снижение отключено |
++| Снижение массы обычного пользователя | автоматическое снижение отключено |
+@@
++## 10. Три математически согласованных сценария КБЖУ
++
++Protein_s = округление_0,1(weightKg × proteinCoefficient_s)
++Fat_s = округление_0,1(max(weightKg × fatCoefficient_s, Energy_s × 0,20 / 9))
++Carb_s = округление_0,1((Energy_s − Protein_s × 4 − Fat_s × 9) / 4)
++MacroEnergy_s = Protein_s × 4 + Fat_s × 9 + Carb_s × 4
++abs(MacroEnergy_s − Energy_s) ≤ 0,5 ккал
+@@
++## 11. 14-дневная калибровка
++
++Минимальное окно наблюдения — 14 дней: динамика массы, фактический
++рацион, нагрузка, сон, энергия, восстановление и измеренный расход.
++Любая коррекция получает status = review_before_apply.
+
+diff --git a/docs/PRODUCT_DATABASE_SPEC.md b/docs/PRODUCT_DATABASE_SPEC.md
+--- a/docs/PRODUCT_DATABASE_SPEC.md
++++ b/docs/PRODUCT_DATABASE_SPEC.md
+@@
+-Версия: `0.1-draft`
+-Статус: на утверждение
++Версия: `0.1.1-draft`
++Статус: архитектурная основа для проверки; не для публикации и реальных пользователей
+@@
+-## 12. Пример записи
++## 12. Полнота данных и область блокировки
++
++data_completeness:
++  identity: complete | incomplete | conflicting
++  nutrition: complete | partial | invalid
++  ingredients: complete | partial | missing
++  allergens: complete | partial | missing | conflicting
++  provenance: complete | missing
++  blocking_scope: none | allergic_users | role | all_users
++
++## 13. Исправленный пример generic-записи
+@@
+-  "data_quality_grade": "A",
+-  "safety_status": "verified",
++  "brand_name": null,
++  "gtin": null,
++  "market_country": null,
++  "data_quality_grade": "B",
++  "safety_status": "partial",
+@@
+-    { "code": "lactose_free_certified", "value": true }
++    {
++      "code": "lactose_free_composition_variant",
++      "value": true,
++      "certification": false
++    }
+@@
+-    "source": "маркировка конкретного производителя",
++    "source": "official_aggregated_food_composition_database",
++    "source_record_id": "resolved_at_import",
+@@
++    "blocking_scope": "allergic_users"
+
+diff --git a/docs/RECOMMENDATION_RULES_SPEC.md b/docs/RECOMMENDATION_RULES_SPEC.md
+--- a/docs/RECOMMENDATION_RULES_SPEC.md
++++ b/docs/RECOMMENDATION_RULES_SPEC.md
+@@
+-Версия: `0.1-draft`
+-Статус: на утверждение
++Версия: `0.1.1-draft`
++Статус: архитектурная основа для проверки; не для публикации и реальных пользователей
+@@
+-Eligibility =
+-  AllergySafe
+-  × binary medical check
+-  × IntoleranceSafe
+-  × UserExclusionSafe
+-  × DataComplete
++AllergyDecision       = allowed | blocked
++MedicalDecision       = allowed | blocked | specialist_review
++IntoleranceDecision   = allowed | blocked
++UserExclusionDecision = allowed | blocked
++DataDecision          = allowed | blocked_for_all |
++                        blocked_for_allergic_user | blocked_for_role
+@@
++### 9.4. Пороги статусов продуктов
++
++| `рекомендуется` | Score `80,0–100,0` |
++| `подходит` | Score `65,0–79,9` |
++| `нейтрален` | Score `50,0–64,9` |
++| `стоит ограничить` | Score `0,0–49,9` или limit rule |
++| `исключён` | любой hard block; Score отсутствует |
+
+diff --git a/docs/TEST_SCENARIOS.md b/docs/TEST_SCENARIOS.md
+--- a/docs/TEST_SCENARIOS.md
++++ b/docs/TEST_SCENARIOS.md
+@@
+-Версия: `0.1-draft`
+-Статус: на утверждение
++Версия: `0.1.1-draft`
++Статус: архитектурная основа для проверки; не для публикации и реальных пользователей
+@@
+-Результат: энергетический диапазон вокруг расчётной величины.
++Результат: расчётный стартовый ориентир, не измеренная потребность.
++КБЖУ показываются тремя математически согласованными сценариями.
+@@
+-Ожидается: автоматический энергетический дефицит.
++Ожидается: автоматическое снижение энергии отключено до safety-скрининга.
+@@
+-Ожидается: длительность одной тренировки используется для обеих сессий.
++Ожидается: double_training_fluid_insufficient_data, пока не указана
++длительность каждой сессии. Одну длительность запрещено удваивать.
+@@
++Каждый из 16 профилей реализован отдельным автоматическим тестом.
++Отдельно запускаются INVARIANT-01—INVARIANT-14.
