@@ -1,247 +1,208 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { evaluateSafety, validateSurveyInput } from "../core/index.ts";
 
-const food = {
-  milk: { id: "milk", contains: ["milk"], lactose: true, complete: true },
-  lactoseFreeMilk: { id: "lf-milk", contains: ["milk"], lactoseFree: true, complete: true },
-  peanut: { id: "peanut", contains: ["peanut"], complete: true },
-  peanutTrace: { id: "peanut-trace", traces: ["peanut"], complete: true },
-  sunflower: { id: "sunflower", contains: [], complete: true },
-  tahini: { id: "tahini", contains: ["sesame"], complete: true },
-  glutenOats: { id: "oats", crossContact: ["gluten"], complete: true },
-  glutenFreeOats: { id: "gf-oats", contains: [], complete: true },
-  fish: { id: "fish", contains: ["fish"], complete: true },
-  shrimp: { id: "shrimp", contains: ["crustacean"], complete: true },
-  soy: { id: "soy", contains: ["soy"], complete: true },
-  lentils: { id: "lentils", contains: [], complete: true },
-  quinoa: { id: "quinoa", contains: [], complete: true },
-  unknownLabel: { id: "unknown", contains: [], complete: false },
-  treeNut: { id: "tree-nut", contains: ["tree_nut"], complete: true },
+const adult = (changes = {}) => ({
+  surveySpecVersion: "0.1.1-draft", userType: "general_user", ageGroup: "adult",
+  ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65,
+  dailyActivity: "moderate", allergies: ["none"], intolerances: ["none"],
+  medicalRestrictions: ["none"], informationalConsent: true,
+  safetyScreening: { pregnancy: "not_applicable", breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false },
+  ...changes,
+});
+
+const assess = (input) => {
+  const validation = validateSurveyInput(input);
+  return { validation, eligibility: evaluateSafety(validation) };
 };
 
-const athletePal = {
-  amateur: { rest: 1.5, training: 1.7, double: 1.9 },
-  competitive: { rest: 1.55, training: 1.85, double: 2.1 },
-  professional: { rest: 1.6, training: 2, double: 2.25 },
-};
+test("valid adult input is normalized and eligible", () => {
+  const { validation, eligibility } = assess(adult());
+  assert.equal(validation.valid, true);
+  assert.equal(validation.profile.isMinor, false);
+  assert.equal(eligibility.status, "eligible");
+  assert.equal(eligibility.medicalGateway, "allowed");
+  assert.equal(eligibility.capabilities.automaticEnergyReduction, false);
+  assert.equal(eligibility.capabilities.diagnosisStatements, false);
+});
 
-function pal(level, day, duration = 90) {
-  let modifier = 0;
-  if (day === "training" && duration <= 45) modifier = -0.05;
-  if (day === "training" && duration > 90) modifier = 0.1;
-  return {
-    value: Math.round((athletePal[level][day] + modifier) * 100) / 100,
-    modifier,
-    warning: day === "double" ? "double_duration_unknown" : null,
-  };
-}
+test("non-object and missing inputs return structured errors", () => {
+  assert.deepEqual(validateSurveyInput(null).errors[0], { code: "INPUT_NOT_OBJECT", path: "$", message: "Survey input must be an object.", severity: "error" });
+  const result = validateSurveyInput({});
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.every((issue) => issue.code && issue.path && issue.severity === "error"));
+});
 
-function allergenSet(allergies) {
-  const set = new Set(allergies);
-  if (set.has("seafood")) {
-    set.add("crustacean");
-    set.add("mollusc");
+test("numeric anthropometry rejects NaN, infinity and out-of-range values", () => {
+  for (const value of [NaN, Infinity, 0, 501]) {
+    const result = validateSurveyInput(adult({ weightKg: value }));
+    assert.ok(result.errors.some((issue) => issue.code === "INVALID_NUMBER" && issue.path === "weightKg"));
   }
-  return set;
-}
+});
 
-function allergyAllowed(allergies, product) {
-  if (allergies.includes("other_unknown")) return false;
-  const blocked = allergenSet(allergies);
-  return ![...(product.contains ?? []), ...(product.traces ?? []), ...(product.crossContact ?? [])]
-    .some((item) => blocked.has(item));
-}
+test("unsupported contract version is rejected", () => {
+  assert.ok(validateSurveyInput(adult({ surveySpecVersion: "0.1.0" })).errors.some((x) => x.code === "UNSUPPORTED_SURVEY_VERSION"));
+});
 
-function productAllowed(profile, product) {
-  if (!allergyAllowed(profile.allergies ?? [], product)) return false;
-  if ((profile.allergies ?? []).length && !product.complete) return false;
-  if ((profile.intolerances ?? []).includes("lactose") && product.lactose && !product.lactoseFree) return false;
-  if ((profile.excluded ?? []).includes(product.id)) return false;
-  return true;
-}
-
-function medicalDecision(profile, product, role = "general") {
-  if ((profile.medical ?? []).includes("celiac") &&
-      [...(product.contains ?? []), ...(product.crossContact ?? [])].includes("gluten")) return "blocked";
-  if ((profile.medical ?? []).includes("renal") && role === "protein") return "specialist_review";
-  if ((profile.medical ?? []).includes("carb") && role === "therapeutic") return "specialist_review";
-  if ((profile.medical ?? []).includes("gi") && role === "elimination") return "specialist_review";
-  return "allowed";
-}
-
-function weightReduction() {
-  return { multiplier: 1, status: "disabled_pending_safety_screen" };
-}
-
-function macroScenarios(energyStart, weightKg, proteinRange) {
-  const energy = {
-    lower: Math.round((energyStart * 0.94) / 50) * 50,
-    central: energyStart,
-    upper: Math.round((energyStart * 1.06) / 50) * 50,
-  };
-  const proteinFactor = {
-    lower: proteinRange[0],
-    central: (proteinRange[0] + proteinRange[1]) / 2,
-    upper: proteinRange[1],
-  };
-  const fatFactor = { lower: 0.9, central: 1, upper: 1.1 };
-  return Object.keys(energy).map((id) => {
-    const protein = round1(weightKg * proteinFactor[id]);
-    const fat = round1(Math.max(weightKg * fatFactor[id], energy[id] * 0.2 / 9));
-    const carbs = round1((energy[id] - protein * 4 - fat * 9) / 4);
-    const macroEnergy = round1(protein * 4 + fat * 9 + carbs * 4);
-    return { id, energy: energy[id], protein, fat, carbs, macroEnergy, deviation: round1(macroEnergy - energy[id]) };
-  });
-}
-
-function status(score, hardBlock = false) {
-  if (hardBlock) return "исключён";
-  if (score < 50) return "стоит ограничить";
-  if (score < 65) return "нейтрален";
-  if (score < 80) return "подходит";
-  return "рекомендуется";
-}
-
-function validate(profile) {
-  if ((profile.allergies ?? []).includes("none") && profile.allergies.length > 1) return "SURVEY_CONFLICT_NONE_WITH_VALUE";
-  if ((profile.allergies ?? []).includes("other_unknown")) return "ALLERGY_UNKNOWN_BLOCKS_CATALOG";
-  return null;
-}
-
-function hydration(profile, day) {
-  if (day === "double" && (!profile.firstDuration || !profile.secondDuration)) {
-    return "double_training_fluid_insufficient_data";
+test("none conflicts are errors and never silently normalized", () => {
+  for (const field of ["allergies", "intolerances", "medicalRestrictions"]) {
+    const result = validateSurveyInput(adult({ [field]: ["none", field === "allergies" ? "peanut" : "other"] }));
+    assert.ok(result.errors.some((x) => x.code === "SURVEY_CONFLICT_NONE_WITH_VALUE" && x.path === field));
   }
-  return "calculated_start";
-}
-
-function round1(value) {
-  return Math.round((value + Number.EPSILON) * 10) / 10;
-}
-
-// 16 отдельных профильных тестов.
-test("PROFILE-01 professional hockey safety", () => {
-  const p = { allergies: ["peanut"], intolerances: ["lactose"] };
-  assert.equal(pal("professional", "training", 90).value, 2);
-  assert.equal(productAllowed(p, food.peanut), false);
-  assert.equal(productAllowed(p, food.peanutTrace), false);
-  assert.equal(productAllowed(p, food.milk), false);
-  assert.equal(productAllowed(p, food.lactoseFreeMilk), true);
 });
 
-test("PROFILE-02 milk allergy overrides lactose-free", () => {
-  assert.equal(productAllowed({ allergies: ["milk"], intolerances: ["lactose"] }, food.lactoseFreeMilk), false);
+test("empty safety multi-answers and declined consent are rejected", () => {
+  assert.ok(validateSurveyInput(adult({ allergies: [] })).errors.some((x) => x.code === "INVALID_VALUE" && x.path === "allergies"));
+  assert.ok(validateSurveyInput(adult({ informationalConsent: false })).errors.some((x) => x.code === "CONSENT_REQUIRED"));
 });
 
-test("PROFILE-03 celiac cross-contact", () => {
-  const p = { medical: ["celiac"] };
-  assert.equal(pal("competitive", "training", 100).value, 1.95);
-  assert.equal(medicalDecision(p, food.glutenOats), "blocked");
-  assert.equal(medicalDecision(p, food.glutenFreeOats), "allowed");
+test("minor requires a guardian and receives no numeric KBJU or portioned menu", () => {
+  const missingGuardian = assess(adult({ ageGroup: "minor", ageYears: 15 }));
+  assert.ok(missingGuardian.validation.errors.some((x) => x.code === "GUARDIAN_REQUIRED"));
+  const { eligibility } = assess(adult({ ageGroup: "minor", ageYears: 15, guardianRole: "athlete_with_parent" }));
+  assert.equal(eligibility.capabilities.numericKbju, false);
+  assert.equal(eligibility.capabilities.portionedMenus, false);
+  assert.ok(eligibility.safetyFlags.includes("minor"));
 });
 
-test("PROFILE-04 minor numeric block", () => {
-  assert.equal({ ageGroup: "minor" }.ageGroup === "minor", true);
-  assert.equal(allergyAllowed(["tree_nut"], food.treeNut), false);
-  assert.equal(allergyAllowed(["tree_nut"], food.peanut), true);
+test("age group and age cannot contradict each other", () => {
+  assert.ok(validateSurveyInput(adult({ ageGroup: "adult", ageYears: 15 })).errors.some((x) => x.code === "AGE_GROUP_MISMATCH"));
 });
 
-test("PROFILE-05 renal specialist review", () => {
-  assert.equal(medicalDecision({ medical: ["renal"] }, food.quinoa, "protein"), "specialist_review");
+test("branch-specific required fields are validated", () => {
+  assert.ok(validateSurveyInput(adult({ dailyActivity: undefined })).errors.some((x) => x.code === "GENERAL_BRANCH_INCOMPLETE"));
+  const athlete = adult({ userType: "athlete", dailyActivity: undefined });
+  assert.ok(validateSurveyInput(athlete).errors.some((x) => x.code === "ATHLETE_BRANCH_INCOMPLETE"));
+  assert.equal(validateSurveyInput({ ...athlete, sportLevel: "amateur", sessionsPerWeek: "3_4", typicalSessionMinutes: 60 }).valid, true);
 });
 
-test("PROFILE-06 weight reduction disabled", () => {
-  assert.deepEqual(weightReduction(), { multiplier: 1, status: "disabled_pending_safety_screen" });
+test("allergies become hard exclusions", () => {
+  const { eligibility } = assess(adult({ allergies: ["peanut", "sesame"] }));
+  assert.deepEqual(eligibility.hardExcludedAllergens, ["peanut", "sesame"]);
+  assert.ok(eligibility.safetyFlags.includes("allergy_hard_exclusions"));
 });
 
-test("PROFILE-07 fish differs from crustaceans", () => {
-  assert.equal(allergyAllowed(["fish"], food.fish), false);
-  assert.equal(allergyAllowed(["fish"], food.shrimp), true);
+test("unresolved other allergy blocks food recommendations and menus", () => {
+  const { validation, eligibility } = assess(adult({ allergies: ["other"], otherAllergy: "неизвестный компонент" }));
+  assert.equal(validation.valid, true);
+  assert.ok(validation.warnings.some((x) => x.code === "ALLERGY_UNRESOLVED"));
+  assert.equal(eligibility.capabilities.foodRecommendations, false);
+  assert.equal(eligibility.capabilities.portionedMenus, false);
 });
 
-test("PROFILE-08 seafood differs from fish", () => {
-  assert.equal(allergyAllowed(["seafood"], food.shrimp), false);
-  assert.equal(allergyAllowed(["seafood"], food.fish), true);
+test("other allergy description is required", () => {
+  assert.ok(validateSurveyInput(adult({ allergies: ["other"] })).errors.some((x) => x.code === "OTHER_ALLERGY_DETAILS_REQUIRED"));
 });
 
-test("PROFILE-09 peanut and sesame combined", () => {
-  const p = { allergies: ["peanut", "sesame"] };
-  assert.equal(productAllowed(p, food.peanut), false);
-  assert.equal(productAllowed(p, food.tahini), false);
-  assert.equal(productAllowed(p, food.sunflower), true);
+test("normalized other allergy is a hard exclusion", () => {
+  const { eligibility } = assess(adult({ allergies: ["other"], otherAllergy: "горчица", normalizedOtherAllergyCode: "mustard" }));
+  assert.equal(eligibility.capabilities.foodRecommendations, true);
+  assert.ok(eligibility.hardExcludedAllergens.includes("mustard"));
 });
 
-test("PROFILE-10 vegan soy conflict", () => {
-  const p = { allergies: ["soy"], excluded: ["milk", "fish", "shrimp"] };
-  assert.equal(productAllowed(p, food.soy), false);
-  assert.equal(productAllowed(p, food.lentils), true);
-  assert.equal(productAllowed(p, food.milk), false);
+test("celiac disease enables strict gluten-free and cross-contact exclusions", () => {
+  const { eligibility } = assess(adult({ medicalRestrictions: ["celiac"] }));
+  assert.equal(eligibility.medicalGateway, "specialist_review");
+  assert.ok(eligibility.safetyFlags.includes("strict_gluten_free"));
+  assert.ok(eligibility.hardExcludedAllergens.includes("gluten_cross_contact"));
 });
 
-test("PROFILE-11 unknown allergy blocks catalog", () => {
-  assert.equal(validate({ allergies: ["other_unknown"] }), "ALLERGY_UNKNOWN_BLOCKS_CATALOG");
-  assert.equal(productAllowed({ allergies: ["other_unknown"] }, food.quinoa), false);
+test("each medical restriction requires specialist review", () => {
+  for (const restriction of ["carbohydrate_metabolism", "kidney", "gastrointestinal", "lipid_metabolism", "high_blood_pressure", "other"]) {
+    const { eligibility } = assess(adult({ medicalRestrictions: [restriction] }));
+    assert.equal(eligibility.medicalGateway, "specialist_review");
+    assert.equal(eligibility.capabilities.numericKbju, false);
+  }
 });
 
-test("PROFILE-12 none conflict validation", () => {
-  assert.equal(validate({ allergies: ["none", "peanut"] }), "SURVEY_CONFLICT_NONE_WITH_VALUE");
+test("medical gateway exposes at least allowed, blocked and specialist_review", () => {
+  const states = new Set([
+    assess(adult()).eligibility.medicalGateway,
+    assess(adult({ medicalRestrictions: ["kidney"] })).eligibility.medicalGateway,
+    assess(adult({ safetyScreening: { pregnancy: "yes", breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false } })).eligibility.medicalGateway,
+  ]);
+  assert.deepEqual([...states].sort(), ["allowed", "blocked", "specialist_review"]);
 });
 
-test("PROFILE-13 incomplete label for allergy", () => {
-  assert.equal(productAllowed({ allergies: ["peanut"] }, food.unknownLabel), false);
+test("pregnancy yes or uncertain blocks personalized output", () => {
+  for (const pregnancy of ["yes", "uncertain"]) {
+    const { eligibility } = assess(adult({ safetyScreening: { pregnancy, breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false } }));
+    assert.equal(eligibility.status, "blocked");
+    assert.equal(eligibility.capabilities.numericKbju, false);
+    assert.equal(eligibility.capabilities.foodRecommendations, false);
+  }
 });
 
-test("PROFILE-14 double-day duration semantics", () => {
-  assert.equal(pal("professional", "double", 150).modifier, 0);
-  assert.equal(hydration({}, "double"), "double_training_fluid_insufficient_data");
+test("breastfeeding blocks personalized output", () => {
+  const { eligibility } = assess(adult({ safetyScreening: { pregnancy: "no", breastfeeding: "yes", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false } }));
+  assert.equal(eligibility.medicalGateway, "blocked");
+  assert.ok(eligibility.safetyFlags.includes("breastfeeding"));
 });
 
-test("PROFILE-15 labs without values", () => {
-  assert.equal(Boolean({ labs: ["ferritin"], numericValues: null }.numericValues), false);
+test("eating-disorder risk and withheld answer both block", () => {
+  for (const eatingDisorderRisk of ["yes", "prefer_not_to_answer"]) {
+    const { eligibility } = assess(adult({ safetyScreening: { pregnancy: "not_applicable", breastfeeding: "not_applicable", eatingDisorderRisk, restrictiveOrCompensatoryPractices: false } }));
+    assert.equal(eligibility.medicalGateway, "blocked");
+  }
 });
 
-test("PROFILE-16 GI symptoms are not diagnosis", () => {
-  assert.equal(medicalDecision({ medical: ["gi"] }, food.quinoa, "elimination"), "specialist_review");
+test("restrictive or compensatory practices block", () => {
+  const { eligibility } = assess(adult({ safetyScreening: { pregnancy: "not_applicable", breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: true } }));
+  assert.ok(eligibility.safetyFlags.includes("restrictive_or_compensatory_practices"));
+  assert.equal(eligibility.status, "blocked");
 });
 
-// 14 отдельных тестов инвариантов.
-test("INVARIANT-01 recommended products are allergy-safe", () => assert.equal(productAllowed({ allergies: ["peanut"] }, food.peanut), false));
-test("INVARIANT-02 menu ingredients are allergy-safe", () => assert.equal(productAllowed({ allergies: ["peanut"] }, food.peanutTrace), false));
-test("INVARIANT-03 replacements are allergy-safe", () => assert.equal(productAllowed({ allergies: ["peanut", "sesame"] }, food.sunflower), true));
-test("INVARIANT-04 unknown safety blocks allergic users", () => assert.equal(productAllowed({ allergies: ["milk"] }, food.unknownLabel), false));
-test("INVARIANT-05 minors receive no numeric macros", () => assert.equal({ ageGroup: "minor" }.ageGroup !== "minor", false));
-test("INVARIANT-06 no deficiency without numeric labs", () => assert.equal(Boolean(null), false));
-test("INVARIANT-07 symptoms never become diagnosis", () => assert.equal(medicalDecision({ medical: ["gi"] }, food.quinoa, "elimination"), "specialist_review"));
-test("INVARIANT-08 automatic weight reduction is disabled", () => assert.equal(weightReduction().multiplier, 1));
-test("INVARIANT-09 double day has no duration modifier", () => assert.equal(pal("competitive", "double", 180).modifier, 0));
-test("INVARIANT-10 deterministic order", () => {
-  const order = (items) => [...items].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-  const input = [{ id: "b", score: 80 }, { id: "a", score: 80 }];
-  assert.deepEqual(order(input), order(input));
+test("missing safety screening is explicit and reduction remains disabled", () => {
+  const { validation, eligibility } = assess(adult({ safetyScreening: undefined }));
+  assert.ok(validation.warnings.some((x) => x.code === "SAFETY_SCREENING_MISSING"));
+  assert.ok(eligibility.safetyFlags.includes("missing_safety_screening"));
+  assert.equal(eligibility.capabilities.automaticEnergyReduction, false);
 });
-test("INVARIANT-11 macro scenarios match energy within tolerance", () => {
-  const scenarios = macroScenarios(3800, 86, [1.8, 2]);
-  assert.equal(scenarios.length, 3);
-  for (const scenario of scenarios) assert.ok(Math.abs(scenario.deviation) <= 0.5);
+
+test("partially missing safety answers return machine-readable warnings", () => {
+  const result = validateSurveyInput(adult({ safetyScreening: { pregnancy: "no" } }));
+  assert.equal(result.valid, true);
+  assert.ok(result.warnings.some((x) => x.code === "ANSWER_UNCERTAIN" && x.path === "safetyScreening.breastfeeding"));
 });
-test("INVARIANT-12 medical gateway is tri-state", () => {
-  const decisions = [
-    medicalDecision({}, food.quinoa),
-    medicalDecision({ medical: ["celiac"] }, food.glutenOats),
-    medicalDecision({ medical: ["renal"] }, food.quinoa, "protein"),
-  ];
-  assert.deepEqual(decisions, ["allowed", "blocked", "specialist_review"]);
+
+test("unsupported safety answers are validation errors", () => {
+  const result = validateSurveyInput(adult({ safetyScreening: { pregnancy: "maybe", breastfeeding: "no", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false } }));
+  assert.ok(result.errors.some((x) => x.code === "INVALID_VALUE" && x.path === "safetyScreening.pregnancy"));
 });
-test("INVARIANT-13 data completeness is contextual", () => {
-  assert.equal(productAllowed({ allergies: ["peanut"] }, food.unknownLabel), false);
-  assert.equal(productAllowed({ allergies: [] }, food.unknownLabel), true);
+
+test("uncertain restrictive-practice answer is conservatively blocked", () => {
+  const { eligibility } = assess(adult({ safetyScreening: { pregnancy: "no", breastfeeding: "no", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: "unknown" } }));
+  assert.equal(eligibility.medicalGateway, "blocked");
+  assert.ok(eligibility.safetyFlags.includes("safety_answer_uncertain"));
 });
-test("INVARIANT-14 status thresholds are exact", () => {
-  assert.equal(status(80), "рекомендуется");
-  assert.equal(status(79.9), "подходит");
-  assert.equal(status(65), "подходит");
-  assert.equal(status(64.9), "нейтрален");
-  assert.equal(status(50), "нейтрален");
-  assert.equal(status(49.9), "стоит ограничить");
-  assert.equal(status(100, true), "исключён");
+
+test("named labs and deficiency claims without values remain unconfirmed", () => {
+  const { validation, eligibility } = assess(adult({ availableLabs: ["ferritin_iron"], claimedDeficiencies: ["iron"] }));
+  assert.ok(validation.warnings.some((x) => x.code === "UNCONFIRMED_DEFICIENCY_CLAIM"));
+  assert.equal(eligibility.capabilities.confirmedDeficiencyStatements, false);
+  assert.ok(eligibility.safetyFlags.includes("unconfirmed_deficiency_claim"));
+});
+
+test("matching numeric laboratory evidence is distinct from a named analysis", () => {
+  const { validation, eligibility } = assess(adult({ claimedDeficiencies: ["ferritin"], laboratoryResults: [{ analyte: "ferritin", value: 24, unit: "ng/mL" }] }));
+  assert.equal(validation.profile.hasNumericLaboratoryResults, true);
+  assert.equal(eligibility.capabilities.confirmedDeficiencyStatements, true);
+  assert.equal(eligibility.capabilities.diagnosisStatements, false);
+});
+
+test("an unrelated numeric lab cannot confirm a deficiency claim", () => {
+  const { validation, eligibility } = assess(adult({ claimedDeficiencies: ["ferritin"], laboratoryResults: [{ analyte: "glucose", value: 5, unit: "mmol/L" }] }));
+  assert.ok(validation.warnings.some((x) => x.code === "UNCONFIRMED_DEFICIENCY_CLAIM"));
+  assert.equal(eligibility.capabilities.confirmedDeficiencyStatements, false);
+});
+
+test("incomplete or non-finite laboratory results are errors", () => {
+  const result = validateSurveyInput(adult({ laboratoryResults: [{ analyte: "ferritin", value: NaN }] }));
+  assert.ok(result.errors.some((x) => x.code === "LAB_RESULT_INCOMPLETE" && x.path === "laboratoryResults.0"));
+});
+
+test("invalid input suppresses every output capability", () => {
+  const eligibility = evaluateSafety(validateSurveyInput(adult({ allergies: ["none", "peanut"] })));
+  assert.equal(eligibility.status, "blocked");
+  assert.deepEqual(eligibility.capabilities, { numericKbju: false, foodRecommendations: false, portionedMenus: false, automaticEnergyReduction: false, diagnosisStatements: false, confirmedDeficiencyStatements: false });
 });
