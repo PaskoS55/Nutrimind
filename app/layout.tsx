@@ -6,9 +6,9 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin", "cyr
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin", "cyrillic"] });
 
 export const metadata: Metadata = {
-  title: "NutriMind by Pasko — персональные ориентиры по питанию",
-  description: "NutriMind превращает данные анкеты в структурированные ориентиры по питанию с приоритетом безопасности.",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  title: "NutriMind by Pasko — персональное питание",
+  description: "Демонстрационный интерфейс NutriMind: анкета и пример персонального отчёта.",
+  icons: { icon: "/brand/nutrimind-symbol.svg", shortcut: "/brand/nutrimind-symbol.svg" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
