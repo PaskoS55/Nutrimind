@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateSafety, validateSurveyInput } from "../core/index.ts";
+import { evaluateSafety, runPhase2A, validateSurveyInput } from "../core/index.ts";
 
 const adult = (changes = {}) => ({
   surveySpecVersion: "0.1.1-draft", userType: "general_user", ageGroup: "adult",
@@ -15,6 +15,20 @@ const assess = (input) => {
   const validation = validateSurveyInput(input);
   return { validation, eligibility: evaluateSafety(validation) };
 };
+
+const phase2Request = (changes = {}) => ({
+  calculationCoreVersion: "0.1.1-draft",
+  activity: {
+    vocabulary: "phase_2_canonical",
+    value: { kind: "general_user", dailyActivity: "moderate", dayType: "rest" },
+    sourceValue: { dailyActivity: "moderate", suppliedBy: "caller" },
+  },
+  goal: { vocabulary: "phase_2_canonical", value: "maintenance", sourceValue: "balance_nutrition" },
+  ...changes,
+});
+
+const phase2 = (survey = adult(), request = phase2Request()) =>
+  runPhase2A({ validation: validateSurveyInput(survey), request });
 
 test("valid adult input is normalized and eligible", () => {
   const { validation, eligibility } = assess(adult());
@@ -205,4 +219,83 @@ test("invalid input suppresses every output capability", () => {
   const eligibility = evaluateSafety(validateSurveyInput(adult({ allergies: ["none", "peanut"] })));
   assert.equal(eligibility.status, "blocked");
   assert.deepEqual(eligibility.capabilities, { numericKbju: false, foodRecommendations: false, portionedMenus: false, automaticEnergyReduction: false, diagnosisStatements: false, confirmedDeficiencyStatements: false });
+});
+
+test("Phase 2A admits an allowed adult without calculating KBJU", () => {
+  const result = phase2();
+  assert.equal(result.status, "admitted");
+  assert.equal(result.admission.admitted, true);
+  assert.equal(result.normalizedInput.demographics.heightCm, 170);
+  assert.deepEqual(result.normalizedInput.source.goal, "balance_nutrition");
+});
+
+test("Phase 2A blocks a blocked medical state", () => {
+  const result = phase2(adult({ safetyScreening: { pregnancy: "yes", breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false } }));
+  assert.equal(result.status, "blocked");
+  assert.equal(result.admission.medicalGateway, "blocked");
+  assert.ok(result.errors.some((issue) => issue.code === "MEDICAL_GATEWAY_BLOCKED"));
+});
+
+test("Phase 2A returns specialist review without calculating through it", () => {
+  const result = phase2(adult({ medicalRestrictions: ["kidney"] }));
+  assert.equal(result.status, "specialist_review");
+  assert.equal(result.admission.admitted, false);
+  assert.ok(result.errors.some((issue) => issue.code === "MEDICAL_SPECIALIST_REVIEW_REQUIRED"));
+});
+
+test("Phase 2A suppresses minors from numeric calculation", () => {
+  const result = phase2(adult({ ageGroup: "minor", ageYears: 15, guardianRole: "athlete_with_parent" }));
+  assert.equal(result.status, "blocked");
+  assert.equal(result.admission.numericOutputAllowed, false);
+  assert.ok(result.errors.some((issue) => issue.code === "MINOR_NUMERIC_OUTPUT_BLOCKED"));
+});
+
+test("Phase 2A rejects structurally incomplete calculation input", () => {
+  const request = phase2Request();
+  delete request.activity;
+  const result = phase2(adult(), request);
+  assert.equal(result.status, "invalid_input");
+  assert.ok(result.errors.some((issue) => issue.code === "CALCULATION_INPUT_INCOMPLETE" && issue.path === "request.activity"));
+});
+
+test("Phase 2A rejects ambiguous survey activity mapping", () => {
+  const result = phase2(adult(), phase2Request({ activity: { vocabulary: "survey", value: "moderate" } }));
+  assert.equal(result.status, "invalid_input");
+  assert.ok(result.errors.some((issue) => issue.code === "ACTIVITY_MAPPING_AMBIGUOUS"));
+});
+
+test("Phase 2A rejects ambiguous survey goal mapping", () => {
+  const result = phase2(adult(), phase2Request({ goal: { vocabulary: "survey", value: "balance_nutrition" } }));
+  assert.equal(result.status, "invalid_input");
+  assert.ok(result.errors.some((issue) => issue.code === "GOAL_MAPPING_AMBIGUOUS"));
+});
+
+test("Phase 2A trace is deeply deterministic", () => {
+  const first = phase2();
+  const second = phase2();
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.trace.map((entry) => entry.stepId), [
+    "phase2a.normalization.v1", "phase2a.admission.v1", "phase2a.result.v1",
+  ]);
+});
+
+test("Phase 2A only includes a caller-supplied timestamp", () => {
+  const omitted = phase2();
+  assert.equal(Object.hasOwn(omitted, "timestamp"), false);
+  const supplied = phase2(adult(), phase2Request({ timestamp: "2026-07-30T12:00:00+03:00" }));
+  assert.equal(supplied.timestamp, "2026-07-30T12:00:00+03:00");
+  assert.equal(supplied.trace.some((entry) => JSON.stringify(entry).includes("2026-07-30")), false);
+});
+
+test("Phase 2A results expose no numeric KBJU result fields", () => {
+  for (const result of [
+    phase2(),
+    phase2(adult({ medicalRestrictions: ["kidney"] })),
+    phase2(adult({ ageGroup: "minor", ageYears: 15, guardianRole: "parent" })),
+    phase2(adult(), phase2Request({ goal: { vocabulary: "survey", value: "energy" } })),
+  ]) {
+    for (const key of ["ree", "pal", "energyStart", "calorieTarget", "macros", "macroScenarios", "hydration", "calibration"]) {
+      assert.equal(Object.hasOwn(result, key), false, `${result.status} unexpectedly contains ${key}`);
+    }
+  }
 });
