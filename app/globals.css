@@ -1162,3 +1162,16 @@ a:focus-visible {
     transition: none !important;
   }
 }
+
+.profile-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:0 0 28px; }
+.profile-fields label,.consent-row { display:grid; gap:8px; color:var(--nm-muted); font-size:12px; }
+.profile-fields input,.profile-fields select { width:100%; padding:14px; border:1px solid var(--nm-line); border-radius:10px; background:#101614; color:#fff; }
+.consent-row { grid-template-columns:auto 1fr; align-items:center; margin-bottom:14px; }
+.result-shell { width:min(900px,calc(100% - 48px)); margin:0 auto; padding:90px 0 120px; }
+.result-shell h1 { font-size:clamp(38px,7vw,72px); margin:12px 0 30px; }
+.ree-value { display:flex; align-items:baseline; gap:16px; margin:30px 0; }
+.ree-value b { color:var(--nm-accent); font-size:clamp(64px,12vw,120px); line-height:1; }
+.result-shell details { margin-top:35px; padding:22px; border:1px solid var(--nm-line); border-radius:12px; }
+.result-shell summary { cursor:pointer; font-weight:700; }
+.result-shell dl { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+@media(max-width:600px){.profile-fields{grid-template-columns:1fr}.result-shell{width:calc(100% - 32px)}}

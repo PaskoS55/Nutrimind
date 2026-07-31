@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateSafety, runPhase2A, validateSurveyInput } from "../core/index.ts";
+import { QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, evaluateSafety, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
 
 const adult = (changes = {}) => ({
   surveySpecVersion: "0.1.1-draft", userType: "general_user", ageGroup: "adult",
@@ -298,4 +298,70 @@ test("Phase 2A results expose no numeric KBJU result fields", () => {
       assert.equal(Object.hasOwn(result, key), false, `${result.status} unexpectedly contains ${key}`);
     }
   }
+});
+
+test("Phase 2B calculates approved male and female adult Mifflin branches", () => {
+  const request = { ...phase2Request(), scope: "ree" };
+  const male = runPhase2B(validateSurveyInput(adult({ sexForFormula: "male", ageYears: 28, heightCm: 189, weightKg: 86 })), request);
+  const female = runPhase2B(validateSurveyInput(adult()), request);
+  assert.equal(male.status, "calculated");
+  assert.equal(male.ree.formulaId, "mifflin_st_jeor_adult_male");
+  assert.equal(male.ree.unroundedKcalPerDay, 1906.25);
+  assert.equal(male.ree.displayKcalPerDay, 1905);
+  assert.equal(female.status, "calculated");
+  assert.equal(female.ree.formulaId, "mifflin_st_jeor_adult_female");
+});
+
+test("Phase 2B is deterministic and adult boundary is admitted", () => {
+  const validation = validateSurveyInput(adult({ ageYears: 18 }));
+  const first = runPhase2B(validation, { ...phase2Request(), scope: "ree" });
+  assert.deepEqual(first, runPhase2B(validation, { ...phase2Request(), scope: "ree" }));
+  assert.equal(first.status, "calculated");
+  assert.equal(first.trace.at(-1).stepId, "phase2b.ree.v1");
+});
+
+test("Phase 2B non-calculated variants contain no forbidden numeric result fields", () => {
+  const cases = [
+    runPhase2B(validateSurveyInput(adult({ ageYears: 15, ageGroup: "minor", guardianRole: "parent" })), { ...phase2Request(), scope: "ree" }),
+    runPhase2B(validateSurveyInput(adult({ medicalRestrictions: ["kidney"] })), { ...phase2Request(), scope: "ree" }),
+    runPhase2B(validateSurveyInput(adult({ safetyScreening: { pregnancy: "yes", breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false } })), { ...phase2Request(), scope: "ree" }),
+    runPhase2B(validateSurveyInput(adult({ heightCm: 0 })), { ...phase2Request(), scope: "ree" }),
+  ];
+  assert.deepEqual(cases.map((x) => x.status), ["minor_suppressed", "specialist_review", "blocked", "invalid_input"]);
+  for (const result of cases) for (const key of ["ree", "calories", "macros", "energyStart"]) assert.equal(Object.hasOwn(result, key), false);
+});
+
+test("questionnaire adapter runs production pipeline without inventing activity or goal mapping", () => {
+  const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal: "maintenance", dailyActivity: "moderate", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true });
+  assert.equal(result.status, "calculated");
+  assert.ok(result.warnings.some((x) => x.code === "REE_STAGE_MAPPING_DEFERRED" && x.path === "request.activity"));
+  assert.ok(result.warnings.some((x) => x.code === "REE_STAGE_MAPPING_DEFERRED" && x.path === "request.goal"));
+  assert.doesNotMatch(JSON.stringify(result), /demo-report|daily calorie target/i);
+  assert.equal(JSON.parse(JSON.stringify(result)).status, "calculated");
+});
+
+test("questionnaire exposes exactly the approved nine-section order", () => {
+  assert.deepEqual(QUESTIONNAIRE_SECTION_TITLES, ["Профиль", "Исходные данные", "Спорт и цель", "Безопасность", "Текущее питание", "Режим вокруг нагрузки", "Самочувствие", "Гидратация", "Анализы и контекст"]);
+});
+
+test("anthropometric fields belong to section 2 and not profile section 1", () => {
+  for (const field of ["ageYears", "sexForFormula", "heightCm", "weightKg"]) assert.equal(QUESTIONNAIRE_FIELD_SECTION[field], 2);
+  assert.equal(QUESTIONNAIRE_FIELD_SECTION.userType, 1);
+  assert.equal(QUESTIONNAIRE_FIELD_SECTION.ageGroup, 1);
+});
+
+test("all five questionnaire goals are accepted and cannot change REE", () => {
+  assert.deepEqual(QUESTIONNAIRE_GOALS, ["weight_loss", "maintenance", "muscle_gain", "performance_recovery", "habits_wellbeing"]);
+  const results = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal, dailyActivity: "moderate", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true }));
+  assert.ok(results.every((result) => result.status === "calculated"));
+  assert.ok(results.every((result) => result.ree.unroundedKcalPerDay === results[0].ree.unroundedKcalPerDay));
+  assert.equal(Object.hasOwn(results[0], "deficit"), false, "weight_loss must not apply a deficit");
+  assert.equal(Object.hasOwn(results[2], "surplus"), false, "muscle_gain must not apply a surplus");
+  for (const [index, result] of results.entries()) assert.ok(JSON.stringify(result.trace).includes(QUESTIONNAIRE_GOALS[index]));
+});
+
+test("questionnaire minor still receives no numeric result", () => {
+  const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "minor", guardianRole: "parent", goal: "maintenance", dailyActivity: "moderate", ageYears: 15, sexForFormula: "female", heightCm: 160, weightKg: 50, informationalConsent: true });
+  assert.equal(result.status, "minor_suppressed");
+  assert.equal(Object.hasOwn(result, "ree"), false);
 });

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import ProductHeader from "../components/ProductHeader";
+import { QUESTIONNAIRE_SECTION_TITLES, runQuestionnairePipeline, type QuestionnaireGoal } from "../../core/index";
 
-type Option = { title: string; note?: string };
+type Option = { title: string; note?: string; value?: string };
 type Step = {
   label: string;
   title: string;
@@ -16,7 +18,7 @@ type Step = {
 
 const steps: Step[] = [
   {
-    label: "Профиль",
+    label: QUESTIONNAIRE_SECTION_TITLES[0],
     title: "Для кого мы создаём план?",
     intro: "Первый выбор определяет дальнейшую ветку вопросов.",
     question: "Ваш профиль",
@@ -31,18 +33,29 @@ const steps: Step[] = [
       "Для несовершеннолетних NutriMind не предлагает агрессивное снижение калорийности, не показывает числовой КБЖУ и напоминает о сопровождении педиатра или спортивного диетолога.",
   },
   {
-    label: "Цели",
-    title: "Какой результат для вас важнее?",
-    intro: "Выберите основной ориентир. Его можно будет изменить позже.",
-    question: "Главная цель",
-    options: [
-      { title: "Результативность и восстановление" },
-      { title: "Поддержание формы" },
-      { title: "Улучшение привычек" },
-    ],
+    label: QUESTIONNAIRE_SECTION_TITLES[1], title: "Основные параметры", intro: "Эти значения используются в утверждённой формуле REE.", question: "Исходные данные", options: [],
   },
   {
-    label: "Рацион",
+    label: QUESTIONNAIRE_SECTION_TITLES[2],
+    title: "Спорт и цель",
+    intro: "Выберите основной ориентир и заполните свою ветку нагрузки.",
+    question: "Главная цель",
+    options: [
+      { value: "weight_loss", title: "Снизить вес", note: "Постепенно уменьшить массу тела" },
+      { value: "maintenance", title: "Поддерживать вес и форму", note: "Сохранить текущую массу и устойчивый режим" },
+      { value: "muscle_gain", title: "Набрать мышечную массу", note: "Поддержать рост мышц и силы" },
+      { value: "performance_recovery", title: "Улучшить результативность и восстановление", note: "Поддержать тренировки, работоспособность и восстановление" },
+      { value: "habits_wellbeing", title: "Улучшить питание и самочувствие", note: "Выстроить более регулярный и устойчивый рацион" },
+    ],
+    safety: "Выбранная цель пока не изменяет калорийность: PAL, целевая энергия и КБЖУ будут подключены на следующем этапе.",
+  },
+  {
+    label: QUESTIONNAIRE_SECTION_TITLES[3], title: "Что нужно исключить в первую очередь?", intro: "Аллергии и медицинские ограничения проверяются до рейтинга продуктов.", question: "Ограничения", options: [
+      { title: "Аллергии" }, { title: "Непереносимости" }, { title: "Целиакия", note: "Строгий безглютеновый режим" }, { title: "Нет известных ограничений" },
+    ], safety: "Аллергены исключаются жёстко до подбора продуктов. При целиакии применяется строгий безглютеновый фильтр, а не обычное пищевое предпочтение.",
+  },
+  {
+    label: QUESTIONNAIRE_SECTION_TITLES[4],
     title: "Как выглядит ваш обычный день?",
     intro: "Нас интересует текущая структура питания, а не идеальный день.",
     question: "Основные приёмы пищи",
@@ -53,26 +66,14 @@ const steps: Step[] = [
     ],
   },
   {
-    label: "Нагрузка",
-    title: "Как часто вы тренируетесь?",
-    intro: "Достаточно общей частоты — без оценки бытовой активности и RPE.",
-    question: "Тренировок в неделю",
-    options: [
-      { title: "1–2" },
-      { title: "3–4" },
-      { title: "5–6" },
-      { title: "7 и более" },
-    ],
-  },
-  {
-    label: "Питание вокруг тренировок",
+    label: QUESTIONNAIRE_SECTION_TITLES[5],
     title: "Когда проходит тренировка?",
     intro: "Это помогает понять доступность питания до и после нагрузки.",
     question: "Обычное время",
     options: [{ title: "Утром" }, { title: "Днём" }, { title: "Вечером" }],
   },
   {
-    label: "Самочувствие",
+    label: QUESTIONNAIRE_SECTION_TITLES[6],
     title: "Как меняется энергия в течение дня?",
     intro: "Это наблюдение, а не медицинская диагностика.",
     question: "Уровень энергии",
@@ -83,7 +84,7 @@ const steps: Step[] = [
     ],
   },
   {
-    label: "Гидратация",
+    label: QUESTIONNAIRE_SECTION_TITLES[7],
     title: "Сколько напитков вы обычно пьёте?",
     intro: "Укажите привычный ориентир без попытки посчитать воду из пищи.",
     question: "Напитки в день",
@@ -94,22 +95,7 @@ const steps: Step[] = [
     ],
   },
   {
-    label: "Ограничения",
-    title: "Что нужно исключить в первую очередь?",
-    intro:
-      "Аллергии и медицинские ограничения проверяются до рейтинга продуктов.",
-    question: "Ограничения",
-    options: [
-      { title: "Аллергии" },
-      { title: "Непереносимости" },
-      { title: "Целиакия", note: "Строгий безглютеновый режим" },
-      { title: "Нет известных ограничений" },
-    ],
-    safety:
-      "Аллергены исключаются жёстко до подбора продуктов. При целиакии применяется строгий безглютеновый фильтр, а не обычное пищевое предпочтение.",
-  },
-  {
-    label: "Контекст",
+    label: QUESTIONNAIRE_SECTION_TITLES[8],
     title: "Последняя проверка перед отчётом",
     intro:
       "Лабораторные данные учитываются только при наличии числовых результатов.",
@@ -124,14 +110,27 @@ const steps: Step[] = [
 ];
 
 export default function Home() {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<number[]>(Array(9).fill(0));
+  const [profile, setProfile] = useState({ ageGroup: "adult", guardianRole: "", ageYears: "", sexForFormula: "", heightCm: "", weightKg: "" });
+  const [goal, setGoal] = useState<QuestionnaireGoal>("maintenance");
+  const [sport, setSport] = useState({ sportType: "hockey", sportLevel: "amateur", sessionsPerWeek: "3_4", typicalSessionMinutes: "60", doubleTrainingDays: false, dailyActivity: "moderate" });
+  const [consent, setConsent] = useState(false);
+  const [issues, setIssues] = useState<string[]>([]);
   const current = steps[step];
   const select = (index: number) =>
     setAnswers((previous) =>
       previous.map((value, i) => (i === step ? index : value)),
     );
-  const fillDemo = () => setAnswers([0, 0, 1, 2, 2, 2, 1, 0, 1]);
+  const fillDemo = () => { setAnswers([0, 0, 0, 3, 1, 2, 2, 1, 1]); setProfile({ ageGroup: "adult", guardianRole: "", ageYears: "28", sexForFormula: "male", heightCm: "189", weightKg: "86" }); setGoal("performance_recovery"); setSport({ sportType: "hockey", sportLevel: "professional", sessionsPerWeek: "5_6", typicalSessionMinutes: "90", doubleTrainingDays: false, dailyActivity: "moderate" }); setConsent(true); };
+  const submit = () => {
+    const athlete = answers[0] === 0;
+    const result = runQuestionnairePipeline({ selections: answers, userType: athlete ? "athlete" : "general_user", ageGroup: profile.ageGroup as "adult" | "minor", guardianRole: profile.guardianRole as "parent" | "legal_guardian" | "athlete_with_parent", goal, sportType: sport.sportType, sportLevel: sport.sportLevel as "professional" | "competitive" | "amateur", sessionsPerWeek: sport.sessionsPerWeek as "1_2" | "3_4" | "5_6" | "7_plus", typicalSessionMinutes: Number(sport.typicalSessionMinutes), doubleTrainingDays: sport.doubleTrainingDays, dailyActivity: sport.dailyActivity as "low" | "moderate" | "high", ageYears: Number(profile.ageYears), sexForFormula: profile.sexForFormula as "female" | "male", heightCm: Number(profile.heightCm), weightKg: Number(profile.weightKg), informationalConsent: consent });
+    if (result.status === "invalid_input") { setIssues(result.issues.filter((x) => x.severity === "error").map((x) => x.message)); setStep(1); return; }
+    sessionStorage.setItem("nutrimind.phase2b.result", JSON.stringify(result));
+    router.push("/result");
+  };
 
   return (
     <main className="app-shell">
@@ -173,20 +172,36 @@ export default function Home() {
           </div>
           <h1 id="question-title">{current.title}</h1>
           <p className="question-intro">{current.intro}</p>
-          <fieldset className="answer-group">
+          {issues.length > 0 && <div className="safety-panel" role="alert"><span>!</span><div><b>Проверьте ответы</b><ul>{issues.map((item) => <li key={item}>{item}</li>)}</ul></div></div>}
+          {step === 0 && <fieldset className="answer-group"><legend>Возрастная группа *</legend><div className="option-grid">{[["adult","Взрослый"],["minor","Несовершеннолетний"]].map(([value,title]) => <button key={value} type="button" role="radio" aria-checked={profile.ageGroup === value} className={`option-card ${profile.ageGroup === value ? "selected" : ""}`} onClick={() => setProfile({ ...profile, ageGroup: value })}><span className="check">{profile.ageGroup === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div></fieldset>}
+          {step === 1 && <div className="profile-fields">
+            <label>Возраст, полных лет *<input type="number" min="1" max="120" value={profile.ageYears} onChange={(e) => setProfile({ ...profile, ageYears: e.target.value })} /></label>
+            <label>Категория для расчётной формулы *<select value={profile.sexForFormula} onChange={(e) => setProfile({ ...profile, sexForFormula: e.target.value })}><option value="">Выберите</option><option value="male">Мужской пол</option><option value="female">Женский пол</option></select></label>
+            <label>Рост, см *<input type="number" min="50" max="250" value={profile.heightCm} onChange={(e) => setProfile({ ...profile, heightCm: e.target.value })} /></label>
+            <label>Масса тела, кг *<input type="number" min="10" max="500" step="0.1" value={profile.weightKg} onChange={(e) => setProfile({ ...profile, weightKg: e.target.value })} /></label>
+            {profile.ageGroup === "minor" && <label>Кто заполняет анкету? *<select value={profile.guardianRole} onChange={(e) => setProfile({ ...profile, guardianRole: e.target.value })}><option value="">Выберите</option><option value="parent">Родитель</option><option value="legal_guardian">Законный представитель</option><option value="athlete_with_parent">Спортсмен вместе с родителем</option></select></label>}
+          </div>}
+          {step === 2 && <div className="profile-fields">{answers[0] === 0 ? <>
+            <label>Вид спорта *<select value={sport.sportType} onChange={(e) => setSport({ ...sport, sportType: e.target.value })}><option value="hockey">Хоккей</option><option value="volleyball">Волейбол</option><option value="football">Футбол</option><option value="combat">Единоборства</option><option value="endurance">Выносливость</option><option value="strength">Силовой спорт</option><option value="other">Другое</option></select></label>
+            <label>Уровень *<select value={sport.sportLevel} onChange={(e) => setSport({ ...sport, sportLevel: e.target.value })}><option value="professional">Профессиональный</option><option value="competitive">Соревновательный</option><option value="amateur">Любительский</option></select></label>
+            <label>Тренировок в неделю *<select value={sport.sessionsPerWeek} onChange={(e) => setSport({ ...sport, sessionsPerWeek: e.target.value })}><option value="1_2">1–2</option><option value="3_4">3–4</option><option value="5_6">5–6</option><option value="7_plus">7 и более</option></select></label>
+            <label>Обычная длительность тренировки, мин *<input type="number" min="1" value={sport.typicalSessionMinutes} onChange={(e) => setSport({ ...sport, typicalSessionMinutes: e.target.value })} /></label>
+            <label className="consent-row"><input type="checkbox" checked={sport.doubleTrainingDays} onChange={(e) => setSport({ ...sport, doubleTrainingDays: e.target.checked })} /> Бывают две тренировки в день?</label>
+          </> : <label>Повседневная активность *<select value={sport.dailyActivity} onChange={(e) => setSport({ ...sport, dailyActivity: e.target.value })}><option value="low">Низкая</option><option value="moderate">Умеренная</option><option value="high">Высокая</option></select></label>}</div>}
+          {step !== 1 && <fieldset className="answer-group">
             <legend>{current.question} *</legend>
             <div className="option-grid">
               {current.options.map((option, index) => (
                 <button
                   type="button"
                   role="radio"
-                  aria-checked={answers[step] === index}
-                  className={`option-card ${answers[step] === index ? "selected" : ""}`}
-                  onClick={() => select(index)}
+                  aria-checked={step === 2 ? goal === option.value : answers[step] === index}
+                  className={`option-card ${(step === 2 ? goal === option.value : answers[step] === index) ? "selected" : ""}`}
+                  onClick={() => step === 2 ? setGoal(option.value as QuestionnaireGoal) : select(index)}
                   key={option.title}
                 >
                   <span className="check">
-                    {answers[step] === index ? "✓" : "○"}
+                    {(step === 2 ? goal === option.value : answers[step] === index) ? "✓" : "○"}
                   </span>
                   <span>
                     <b>{option.title}</b>
@@ -195,12 +210,11 @@ export default function Home() {
                 </button>
               ))}
             </div>
-          </fieldset>
+          </fieldset>}
           <div className="safety-panel">
             <span aria-hidden="true">i</span>
             <p>
-              {current.safety ??
-                "Ответ используется только для построения демонстрационного интерфейса. Данные не отправляются и не запускают расчёт."}
+              {current.safety ?? "Данные обрабатываются локально в браузере и не сохраняются в аккаунте или на сервере."}
             </p>
           </div>
           <div className="question-actions">
@@ -219,9 +233,7 @@ export default function Home() {
                 Продолжить →
               </button>
             ) : (
-              <Link className="continue-button" href="/report-demo">
-                Посмотреть демо-отчёт →
-              </Link>
+              <div><label className="consent-row"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> Согласен на информационную обработку ответов *</label><button type="button" className="continue-button" onClick={submit}>Рассчитать доступный этап →</button></div>
             )}
           </div>
         </section>

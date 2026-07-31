@@ -57,28 +57,34 @@ export function normalizeCalculationInput(
   if (request.calculationCoreVersion !== CALCULATION_CORE_VERSION)
     errors.push(error("UNSUPPORTED_CALCULATION_VERSION", "request.calculationCoreVersion", "Calculation core version is unsupported.", "NORMALIZE.VERSION.001"));
 
-  if (!isRecord(request.activity)) {
+  const reeOnly = request.scope === "ree";
+  const requestedActivity = request.activity;
+  if (!isRecord(request.activity) && !reeOnly) {
     errors.push(error("CALCULATION_INPUT_INCOMPLETE", "request.activity", "Explicit activity input is required.", "NORMALIZE.STRUCTURE.001"));
-  } else if (request.activity.vocabulary === "survey") {
-    errors.push(error("ACTIVITY_MAPPING_AMBIGUOUS", "request.activity", "Survey activity has no approved canonical PAL mapping.", "NORMALIZE.ACTIVITY.NO_INFERENCE.001"));
-  } else if (request.activity.vocabulary !== "phase_2_canonical" || !activityValue(request.activity.value) || !isTraceValue(request.activity.sourceValue)) {
+  } else if (isRecord(request.activity) && request.activity.vocabulary === "survey") {
+    if (reeOnly) warnings.push({ code: "REE_STAGE_MAPPING_DEFERRED", path: "request.activity", severity: "warning", stage: "normalization", message: "Survey activity was preserved; PAL mapping is deferred because REE does not use activity.", ruleId: "NORMALIZE.REE.ACTIVITY.DEFER.001" });
+    else errors.push(error("ACTIVITY_MAPPING_AMBIGUOUS", "request.activity", "Survey activity has no approved canonical PAL mapping.", "NORMALIZE.ACTIVITY.NO_INFERENCE.001"));
+  } else if (requestedActivity && (requestedActivity.vocabulary !== "phase_2_canonical" || !activityValue(requestedActivity.value) || !isTraceValue(requestedActivity.sourceValue))) {
     errors.push(error("ACTIVITY_INPUT_UNSUPPORTED", "request.activity", "Activity input is unsupported or its source is not traceable.", "NORMALIZE.ACTIVITY.CANONICAL.001"));
-  } else if (request.activity.value.kind !== validation.profile.userType) {
+  } else if (requestedActivity?.vocabulary === "phase_2_canonical" && requestedActivity.value.kind !== validation.profile.userType) {
     errors.push(error("PROFILE_ACTIVITY_MISMATCH", "request.activity.value.kind", "Activity branch conflicts with the validated profile.", "NORMALIZE.ACTIVITY.BRANCH.001"));
   }
 
-  if (!isRecord(request.goal)) {
+  const requestedGoal = request.goal;
+  if (!isRecord(request.goal) && !reeOnly) {
     errors.push(error("CALCULATION_INPUT_INCOMPLETE", "request.goal", "Explicit goal input is required.", "NORMALIZE.STRUCTURE.001"));
-  } else if (request.goal.vocabulary === "survey") {
-    errors.push(error("GOAL_MAPPING_AMBIGUOUS", "request.goal", "Survey goal has no approved canonical goal mapping.", "NORMALIZE.GOAL.NO_INFERENCE.001"));
-  } else if (request.goal.vocabulary !== "phase_2_canonical" || !goals.includes(request.goal.value as GoalKind) || !isTraceValue(request.goal.sourceValue)) {
+  } else if (isRecord(request.goal) && request.goal.vocabulary === "survey") {
+    if (reeOnly) warnings.push({ code: "REE_STAGE_MAPPING_DEFERRED", path: "request.goal", severity: "warning", stage: "normalization", message: "Survey goal was preserved; canonical goal mapping is deferred because REE does not use goals.", ruleId: "NORMALIZE.REE.GOAL.DEFER.001" });
+    else errors.push(error("GOAL_MAPPING_AMBIGUOUS", "request.goal", "Survey goal has no approved canonical goal mapping.", "NORMALIZE.GOAL.NO_INFERENCE.001"));
+  } else if (requestedGoal && (requestedGoal.vocabulary !== "phase_2_canonical" || !goals.includes(requestedGoal.value as GoalKind) || !isTraceValue(requestedGoal.sourceValue))) {
     errors.push(error("GOAL_INPUT_UNSUPPORTED", "request.goal", "Goal input is unsupported or its source is not traceable.", "NORMALIZE.GOAL.CANONICAL.001"));
   }
   if (errors.length) return { input: null, errors, warnings };
 
-  const activity = request.activity as Extract<typeof request.activity, { vocabulary: "phase_2_canonical" }>;
-  const goal = request.goal as Extract<typeof request.goal, { vocabulary: "phase_2_canonical" }>;
-  warnings.push(warning("request.activity.sourceValue"), warning("request.goal.sourceValue"));
+  const activity = request.activity?.vocabulary === "phase_2_canonical" ? request.activity : undefined;
+  const goal = request.goal?.vocabulary === "phase_2_canonical" ? request.goal : undefined;
+  if (activity) warnings.push(warning("request.activity.sourceValue"));
+  if (goal) warnings.push(warning("request.goal.sourceValue"));
   const profile = validation.profile;
   return {
     errors, warnings,
@@ -90,9 +96,12 @@ export function normalizeCalculationInput(
         ageYears: profile.ageYears, sexForFormula: profile.sexForFormula, heightCm: profile.heightCm,
         weightKg: profile.weightKg, ageGroup: profile.ageGroup,
       },
-      activity: activity.value,
-      goal: goal.value,
-      source: { activity: activity.sourceValue, goal: goal.sourceValue },
+      ...(activity ? { activity: activity.value } : {}),
+      ...(goal ? { goal: goal.value } : {}),
+      source: {
+        ...(activity ? { activity: activity.sourceValue } : request.activity ? { activity: request.activity.value as TraceValue } : {}),
+        ...(goal ? { goal: goal.sourceValue } : request.goal ? { goal: request.goal.value as TraceValue } : {}),
+      },
     },
   };
 }

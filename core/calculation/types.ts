@@ -13,7 +13,7 @@ export type CalculationCoreVersion = typeof CALCULATION_CORE_VERSION;
 export type DayType = "rest" | "training" | "double";
 export type GoalKind = "maintenance" | "weight_loss" | "weight_gain" | "recomposition";
 export type CalculationResultStatus = "admitted" | "blocked" | "specialist_review" | "invalid_input";
-export type CalculationStage = "normalization" | "admission" | "result";
+export type CalculationStage = "normalization" | "admission" | "ree" | "result";
 export type CalculationSeverity = "error" | "warning";
 
 export interface CalculationVersions {
@@ -50,8 +50,10 @@ export interface SurveyVocabularyValue {
 
 export interface Phase2ACalculationRequest {
   calculationCoreVersion: CalculationCoreVersion | string;
-  activity: ExplicitCanonicalValue<CanonicalActivityInput> | SurveyVocabularyValue;
-  goal: ExplicitCanonicalValue<GoalKind> | SurveyVocabularyValue;
+  /** REE does not depend on unresolved PAL or goal policy. */
+  scope?: "full" | "ree";
+  activity?: ExplicitCanonicalValue<CanonicalActivityInput> | SurveyVocabularyValue;
+  goal?: ExplicitCanonicalValue<GoalKind> | SurveyVocabularyValue;
   /** Metadata only. It is copied verbatim and is never generated or parsed by the core. */
   timestamp?: string;
 }
@@ -67,11 +69,11 @@ export interface NormalizedCalculationInput {
     weightKg: number;
     ageGroup: "adult" | "minor";
   };
-  activity: CanonicalActivityInput;
-  goal: GoalKind;
+  activity?: CanonicalActivityInput;
+  goal?: GoalKind;
   source: {
-    activity: TraceValue;
-    goal: TraceValue;
+    activity?: TraceValue;
+    goal?: TraceValue;
   };
 }
 
@@ -88,6 +90,10 @@ export type CalculationIssueCode =
   | "MEDICAL_GATEWAY_BLOCKED"
   | "MEDICAL_SPECIALIST_REVIEW_REQUIRED"
   | "NUMERIC_OUTPUT_NOT_ELIGIBLE"
+  | "REE_INPUT_INVALID"
+  | "REE_POPULATION_UNAPPROVED"
+  | "REE_FORMULA_AMBIGUOUS"
+  | "REE_STAGE_MAPPING_DEFERRED"
   | "SOURCE_VALUE_PRESERVED";
 
 export interface CalculationIssue {
@@ -108,6 +114,7 @@ export const TRACE_STEP_IDS = {
   normalization: "phase2a.normalization.v1",
   admission: "phase2a.admission.v1",
   result: "phase2a.result.v1",
+  ree: "phase2b.ree.v1",
 } as const;
 
 export type CalculationTraceStepId = (typeof TRACE_STEP_IDS)[keyof typeof TRACE_STEP_IDS];
@@ -123,6 +130,19 @@ export interface CalculationTraceEntry {
   warnings: CalculationIssueCode[];
   blockedDecisions: CalculationIssueCode[];
 }
+
+export type Phase2BStatus = "calculated" | "blocked" | "specialist_review" | "minor_suppressed" | "invalid_input";
+export interface ReeResult {
+  formulaId: "mifflin_st_jeor_adult_male" | "mifflin_st_jeor_adult_female";
+  inputs: { ageYears: number; sexForFormula: "female" | "male"; heightCm: number; weightKg: number; units: { height: "cm"; weight: "kg" } };
+  unroundedKcalPerDay: number;
+  displayKcalPerDay: number;
+  roundingRuleId: "nearest_5_kcal";
+}
+interface Phase2BBase { status: Phase2BStatus; versions: CalculationVersions; issues: CalculationIssue[]; nextStepCode: string; trace: CalculationTraceEntry[] }
+export type Phase2BResult =
+  | (Phase2BBase & { status: "calculated"; ree: ReeResult; warnings: CalculationWarning[] })
+  | (Phase2BBase & { status: Exclude<Phase2BStatus, "calculated"> });
 
 export interface CalculationAdmission {
   admitted: boolean;
