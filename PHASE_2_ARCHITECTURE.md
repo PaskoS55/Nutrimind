@@ -222,3 +222,11 @@ No implementation should resolve these by assumption:
 ## 12. Implemented Phase 2C2 boundary
 
 Phase 2C2 consumes only a real eligible `Phase2C1Result` with `status: calculated` and enriches each existing day scenario with the ordered nested macro scenarios `lower`, `central`, and `upper`. It does not recalculate REE, PAL, duration modifiers, day availability, or Phase 2C1 EnergyStart. The current result/session schema is `nutrimind.phase2c2.result.v1`; older Phase 2B and Phase 2C1 payloads are incompatible. Hydration, sweat rate, and fourteen-day calibration remain deferred.
+
+## 13. Implemented Phase 2D1 boundary
+
+Phase 2D1 consumes one completed `Phase2C2Result` plus explicit questionnaire hydration context. It never invokes Phase 1–2C2 again. A calculated result embeds the structurally unchanged Phase 2C2 result and adds two deliberately separate concepts: the EFSA adult total-water reference (`2000 ml/day` female, `2500 ml/day` male, beverages plus food water) and, for an athlete with a valid single-session duration, a general during-session range (`durationMinutes × 400/60` through `durationMinutes × 800/60`, displayed to the nearest 50 ml with ties to even). No combined daily target exists.
+
+The session/result schema is `nutrimind.phase2d1.result.v1`. The questionnaire adapter maps only the three values actually rendered by production section 8 to `under_1_5_l`, `between_1_5_and_2_l`, or `over_2_l`; absence maps to `not_provided`, while any unknown non-empty value fails closed. The beverage category is context only and is never compared numerically with total water. Schema-declared `sweating` and `trainingDrink` remain outside production because the UI does not collect them.
+
+Only a calculated adult Phase 2C2 result can receive numeric millilitre fields. `blocked`, `specialist_review`, `minor_suppressed`, and `invalid_input` carry neither the upstream numeric payload nor hydration numeric structures. A double-training scenario retains the valid range for the one entered session but has no double-day total and emits `double_session_duration_missing`. Sweat rate, environmental adjustments, electrolyte guidance, diagnoses, and fourteen-day calibration remain excluded.

@@ -12,4 +12,6 @@ export * from "./phase2c.ts";
 export * from "./macro-policy.ts";
 export * from "./macro-scenarios.ts";
 export * from "./phase2c2.ts";
+export * from "./hydration-policy.ts";
+export * from "./phase2d1.ts";
 export * from "./result-schema.ts";

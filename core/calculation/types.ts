@@ -154,6 +154,7 @@ export type Phase2BResult =
 
 export const PHASE2C1_RESULT_SCHEMA_VERSION = "nutrimind.phase2c1.result.v1" as const;
 export const PHASE2C2_RESULT_SCHEMA_VERSION = "nutrimind.phase2c2.result.v1" as const;
+export const PHASE2D1_RESULT_SCHEMA_VERSION = "nutrimind.phase2d1.result.v1" as const;
 export type ScenarioId = "typical_day" | "rest" | "training" | "double_training";
 export type ScenarioLabelCode = "day.typical" | "day.rest" | "day.training" | "day.double_training";
 export type GoalStatus = "disabled_pending_safety_screen" | "deferred_to_goal_phase" | "neutral_in_phase2c1";
@@ -196,6 +197,37 @@ interface Phase2C2Base { status: Phase2BStatus; versions: CalculationVersions; r
 export type Phase2C2Result =
   | (Phase2C2Base & { status: "calculated"; ree: ReeResult; selectedGoal: GoalKind; goalStatus: GoalStatus; appliedGoalMultiplier: 1; scenarios: Phase2C2EnergyScenario[]; warnings: CalculationWarning[]; phase2c1Warnings: string[]; phase2c2Warnings: string[] })
   | (Phase2C2Base & { status: Exclude<Phase2BStatus, "calculated"> });
+
+export type BeverageIntakeBand = "under_1_5_l" | "between_1_5_and_2_l" | "over_2_l" | "not_provided";
+export interface HydrationInputContext {
+  beverageIntakeBand: BeverageIntakeBand;
+  displayLabel: "До 1,5 л" | "1,5–2 л" | "Более 2 л" | "Не указано";
+  directlyComparableToBaseline: false;
+}
+export type HydrationWarningId =
+  | "hydration_intake_not_provided" | "beverage_intake_not_comparable_to_total_water"
+  | "exercise_range_not_personalized" | "sweat_rate_not_available"
+  | "training_duration_unavailable" | "double_session_duration_missing";
+export type ExerciseFluidGuidance =
+  | { status: "range_calculated"; durationMinutes: number; lowerMl: number; upperMl: number; scope: "during_single_training_session"; personalized: false; sweatRateAvailable: false }
+  | { status: "duration_unavailable" | "not_applicable"; scope: "during_single_training_session"; personalized: false; sweatRateAvailable: false };
+export interface HydrationCalculationTrace {
+  step: 1 | 2 | 3;
+  operation: "baseline_reference" | "exercise_range" | "separation_guard";
+  inputs: Record<string, TraceValue>;
+  outputs: Record<string, TraceValue>;
+  ruleIds: string[];
+}
+export interface Phase2D1HydrationInput {
+  hydrationInputContext: HydrationInputContext;
+  trainingDurationMinutes?: number;
+  doubleTrainingDay: boolean;
+  athlete: boolean;
+}
+interface Phase2D1Base { status: Phase2BStatus; versions: CalculationVersions; schemaVersion: typeof PHASE2D1_RESULT_SCHEMA_VERSION; engineVersion: CalculationCoreVersion; issues: CalculationIssue[]; nextStepCode: string; trace: CalculationTraceEntry[] }
+export type Phase2D1Result =
+  | (Phase2D1Base & { status: "calculated"; phase2c2: Extract<Phase2C2Result, { status: "calculated" }>; hydrationInputContext: HydrationInputContext; baselineTotalWater: { source: "EFSA NDA Panel 2010"; sexBasis: "female" | "male"; totalWaterMl: 2000 | 2500; scope: "all_beverages_plus_food_water_per_day"; includesFoodWater: true; isIndividualRequirement: false }; exerciseFluidGuidance: ExerciseFluidGuidance; doubleSessionGuidance: { status: "not_applicable" | "second_duration_missing"; numericTotalAvailable: false }; warnings: HydrationWarningId[]; appliedPolicy: { policyId: "hydration.phase2d1.v1"; ruleIds: string[] }; calculationTrace: HydrationCalculationTrace[] })
+  | (Phase2D1Base & { status: Exclude<Phase2BStatus, "calculated"> });
 
 export interface CalculationAdmission {
   admitted: boolean;

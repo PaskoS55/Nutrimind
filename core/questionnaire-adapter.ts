@@ -1,5 +1,5 @@
 import { validateSurveyInput } from "./validation.ts";
-import { CALCULATION_CORE_VERSION, ORDINARY_ACTIVITIES, runPhase2C2, type OrdinaryActivity, type Phase2C2Result } from "./calculation/index.ts";
+import { CALCULATION_CORE_VERSION, ORDINARY_ACTIVITIES, hydrationContext, runPhase2C2, runPhase2D1, type BeverageIntakeBand, type OrdinaryActivity, type Phase2D1Result } from "./calculation/index.ts";
 
 export const QUESTIONNAIRE_SECTION_TITLES = [
   "Профиль", "Исходные данные", "Спорт и цель", "Безопасность", "Текущее питание",
@@ -36,9 +36,15 @@ export function adaptQuestionnaireAnswers(raw: QuestionnaireAnswers) {
   return { raw, validation: validateSurveyInput(input) };
 }
 
-export function runQuestionnairePipeline(raw: QuestionnaireAnswers): Phase2C2Result {
+const hydrationBands: Record<number, Exclude<BeverageIntakeBand, "not_provided">> = { 0: "under_1_5_l", 1: "between_1_5_and_2_l", 2: "over_2_l" };
+
+export function runQuestionnairePipeline(raw: QuestionnaireAnswers): Phase2D1Result {
   const adapted = adaptQuestionnaireAnswers(raw);
   const athlete = raw.userType === "athlete";
   const activity = athlete ? { kind: "athlete" as const, sportLevel: raw.sportLevel!, typicalSessionMinutes: raw.typicalSessionMinutes!, sessionsPerWeek: raw.sessionsPerWeek, doubleTrainingDays: raw.doubleTrainingDays, dayType: "training" as const } : { kind: "general_user" as const, dailyActivity: raw.dailyActivity as OrdinaryActivity, dayType: "rest" as const };
-  return runPhase2C2(adapted.validation, { calculationCoreVersion: CALCULATION_CORE_VERSION, activity: { vocabulary: "phase_2_canonical", value: activity, sourceValue: { audience: raw.userType ?? null, activity: raw.dailyActivity ?? null, level: raw.sportLevel ?? null, sessionDurationMin: raw.typicalSessionMinutes ?? null, sessionsPerWeek: raw.sessionsPerWeek ?? null, doubleDays: raw.doubleTrainingDays ?? null } }, goal: { vocabulary: "phase_2_canonical", value: raw.goal!, sourceValue: raw.goal ?? null } });
+  const phase2c2 = runPhase2C2(adapted.validation, { calculationCoreVersion: CALCULATION_CORE_VERSION, activity: { vocabulary: "phase_2_canonical", value: activity, sourceValue: { audience: raw.userType ?? null, activity: raw.dailyActivity ?? null, level: raw.sportLevel ?? null, sessionDurationMin: raw.typicalSessionMinutes ?? null, sessionsPerWeek: raw.sessionsPerWeek ?? null, doubleDays: raw.doubleTrainingDays ?? null } }, goal: { vocabulary: "phase_2_canonical", value: raw.goal!, sourceValue: raw.goal ?? null } });
+  const hydrationSelection = raw.selections[7];
+  if (hydrationSelection !== undefined && !Object.hasOwn(hydrationBands, hydrationSelection)) return runPhase2D1(phase2c2, { unsupportedHydrationValue: hydrationSelection });
+  const band = hydrationSelection === undefined ? "not_provided" : hydrationBands[hydrationSelection];
+  return runPhase2D1(phase2c2, { hydrationInputContext: hydrationContext(band), athlete, trainingDurationMinutes: athlete ? raw.typicalSessionMinutes : undefined, doubleTrainingDay: athlete && raw.doubleTrainingDays === true });
 }

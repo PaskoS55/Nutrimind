@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FAT_COEFFICIENTS, MACRO_ENERGY_FACTORS, MACRO_SCENARIO_IDS, ORDINARY_ACTIVITIES, PHASE2C2_RESULT_SCHEMA_VERSION, PROTEIN_COEFFICIENTS, QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, athleteDurationModifier, buildMacroScenarios, buildPalScenarios, calculateEnergyStart, clampAndRoundPal, evaluateSafety, isCompatiblePhase2C2Payload, roundToNearest50TiesToEven, roundToOneDecimalTiesToEven, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
+import { FAT_COEFFICIENTS, MACRO_ENERGY_FACTORS, MACRO_SCENARIO_IDS, ORDINARY_ACTIVITIES, PHASE2C2_RESULT_SCHEMA_VERSION, PHASE2D1_RESULT_SCHEMA_VERSION, PROTEIN_COEFFICIENTS, QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, athleteDurationModifier, buildMacroScenarios, buildPalScenarios, calculateEnergyStart, clampAndRoundPal, evaluateSafety, isCompatiblePhase2C2Payload, isCompatiblePhase2D1Payload, roundToNearest50MlTiesToEven, roundToNearest50TiesToEven, roundToOneDecimalTiesToEven, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
 
 const adult = (changes = {}) => ({
   surveySpecVersion: "0.1.1-draft", userType: "general_user", ageGroup: "adult",
@@ -331,11 +331,12 @@ test("Phase 2B non-calculated variants contain no forbidden numeric result field
   for (const result of cases) for (const key of ["ree", "calories", "macros", "energyStart"]) assert.equal(Object.hasOwn(result, key), false);
 });
 
-test("questionnaire adapter runs the production Phase 2C2 pipeline", () => {
+test("questionnaire adapter runs the production Phase 2D1 pipeline", () => {
   const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal: "maintenance", dailyActivity: "mostly_sitting", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true });
   assert.equal(result.status, "calculated");
-  assert.equal(result.resultSchemaVersion, PHASE2C2_RESULT_SCHEMA_VERSION);
-  assert.equal(result.scenarios[0].palFinal, 1.4);
+  assert.equal(result.schemaVersion, PHASE2D1_RESULT_SCHEMA_VERSION);
+  assert.equal(result.phase2c2.resultSchemaVersion, PHASE2C2_RESULT_SCHEMA_VERSION);
+  assert.equal(result.phase2c2.scenarios[0].palFinal, 1.4);
   assert.doesNotMatch(JSON.stringify(result), /demo-report|daily calorie target/i);
   assert.equal(JSON.parse(JSON.stringify(result)).status, "calculated");
 });
@@ -354,7 +355,7 @@ test("all five questionnaire goals are accepted and cannot change REE", () => {
   assert.deepEqual(QUESTIONNAIRE_GOALS, ["weight_loss", "maintenance", "muscle_gain", "performance_recovery", "habits_wellbeing"]);
   const results = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal, dailyActivity: "mostly_sitting", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true }));
   assert.ok(results.every((result) => result.status === "calculated"));
-  assert.ok(results.every((result) => result.ree.unroundedKcalPerDay === results[0].ree.unroundedKcalPerDay));
+  assert.ok(results.every((result) => result.phase2c2.ree.unroundedKcalPerDay === results[0].phase2c2.ree.unroundedKcalPerDay));
   assert.equal(Object.hasOwn(results[0], "deficit"), false, "weight_loss must not apply a deficit");
   assert.equal(Object.hasOwn(results[2], "surplus"), false, "muscle_gain must not apply a surplus");
   for (const [index, result] of results.entries()) assert.ok(JSON.stringify(result.trace).includes(QUESTIONNAIRE_GOALS[index]));
@@ -388,8 +389,8 @@ test("ordinary PAL mappings and scenario order are exact", () => {
   for (const activity of ORDINARY_ACTIVITIES) {
     const result = runQuestionnairePipeline(questionnaire({ dailyActivity: activity }));
     assert.equal(result.status, "calculated");
-    assert.deepEqual(result.scenarios.map((x) => [x.id,x.palFinal]), expected[activity]);
-    assert.ok(result.scenarios.every((x) => x.durationModifier === 0 && x.id !== "double_training"));
+    assert.deepEqual(result.phase2c2.scenarios.map((x) => [x.id,x.palFinal]), expected[activity]);
+    assert.ok(result.phase2c2.scenarios.every((x) => x.durationModifier === 0 && x.id !== "double_training"));
   }
 });
 
@@ -403,18 +404,18 @@ test("athlete PAL levels, duration boundaries, and double warning are exact", ()
     assert.equal(scenarios[2].modifier, 0);
     assert.ok(scenarios[2].warnings.includes("double_duration_unknown"));
   }
-  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ sportLevel:"amateur", typicalSessionMinutes:40 })).scenarios[1].palFinal, 1.65);
-  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ sportLevel:"competitive", typicalSessionMinutes:120 })).scenarios[1].palFinal, 1.95);
+  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ sportLevel:"amateur", typicalSessionMinutes:40 })).phase2c2.scenarios[1].palFinal, 1.65);
+  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ sportLevel:"competitive", typicalSessionMinutes:120 })).phase2c2.scenarios[1].palFinal, 1.95);
 });
 
 test("approved energy examples use unrounded REE and ties-to-even nearest 50", () => {
   const professional = runQuestionnairePipeline(athleteQuestionnaire({ doubleTrainingDays:true }));
   assert.equal(professional.status, "calculated");
-  assert.equal(professional.ree.unroundedKcalPerDay, 1906.25);
-  assert.equal(professional.scenarios[1].energyStartRawKcal, 3812.5);
-  assert.equal(professional.scenarios[1].energyStartKcal, 3800);
-  assert.equal(professional.scenarios[2].energyStartRawKcal, 4289.0625);
-  assert.equal(professional.scenarios[2].energyStartKcal, 4300);
+  assert.equal(professional.phase2c2.ree.unroundedKcalPerDay, 1906.25);
+  assert.equal(professional.phase2c2.scenarios[1].energyStartRawKcal, 3812.5);
+  assert.equal(professional.phase2c2.scenarios[1].energyStartKcal, 3800);
+  assert.equal(professional.phase2c2.scenarios[2].energyStartRawKcal, 4289.0625);
+  assert.equal(professional.phase2c2.scenarios[2].energyStartKcal, 4300);
   assert.equal(roundToNearest50TiesToEven(3812.5), 3800);
   assert.deepEqual(calculateEnergyStart(1906.25,2), { raw:3812.5, displayed:3800 });
 });
@@ -427,18 +428,18 @@ test("PAL clamp and two decimal policy are deterministic", () => {
 
 test("goal policy stays neutral for energy", () => {
   const results = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline(questionnaire({ goal })));
-  assert.deepEqual(results.map((x) => x.scenarios.map((s) => s.energyStartKcal)), Array(5).fill(results[0].scenarios.map((s) => s.energyStartKcal)));
-  assert.ok(results.every((x) => x.appliedGoalMultiplier === 1));
-  assert.equal(results[0].goalStatus, "disabled_pending_safety_screen");
-  assert.equal(results[2].goalStatus, "deferred_to_goal_phase");
+  assert.deepEqual(results.map((x) => x.phase2c2.scenarios.map((s) => s.energyStartKcal)), Array(5).fill(results[0].phase2c2.scenarios.map((s) => s.energyStartKcal)));
+  assert.ok(results.every((x) => x.phase2c2.appliedGoalMultiplier === 1));
+  assert.equal(results[0].phase2c2.goalStatus, "disabled_pending_safety_screen");
+  assert.equal(results[2].phase2c2.goalStatus, "deferred_to_goal_phase");
 });
 
 test("Phase 2C1 is deterministic and sessions frequency is context only", () => {
   const first = runQuestionnairePipeline(athleteQuestionnaire({ sessionsPerWeek:"1_2" }));
   const second = runQuestionnairePipeline(athleteQuestionnaire({ sessionsPerWeek:"7_plus" }));
-  assert.deepEqual(first.scenarios.map((x) => x.palFinal), second.scenarios.map((x) => x.palFinal));
+  assert.deepEqual(first.phase2c2.scenarios.map((x) => x.palFinal), second.phase2c2.scenarios.map((x) => x.palFinal));
   assert.deepEqual(first, runQuestionnairePipeline(athleteQuestionnaire({ sessionsPerWeek:"1_2" })));
-  assert.ok(JSON.stringify(second.scenarios).includes("7_plus"));
+  assert.ok(JSON.stringify(second.phase2c2.scenarios).includes("7_plus"));
 });
 
 test("Phase 2C1 non-calculated JSON has no numeric nutrition fields", () => {
@@ -452,10 +453,10 @@ test("Phase 2C1 non-calculated JSON has no numeric nutrition fields", () => {
 test("Phase 2C2 preserves Phase 2C1 days and attaches ordered macro scenarios", () => {
   const result = runQuestionnairePipeline(athleteQuestionnaire({ doubleTrainingDays: true }));
   assert.equal(result.status, "calculated");
-  assert.equal(result.resultSchemaVersion, PHASE2C2_RESULT_SCHEMA_VERSION);
-  assert.deepEqual(result.scenarios.map((x) => x.id), ["rest", "training", "double_training"]);
-  assert.deepEqual(result.scenarios.map((x) => [x.palFinal, x.durationModifier, x.energyStartKcal]), [[1.6,0,3050],[2,0,3800],[2.25,0,4300]]);
-  assert.ok(result.scenarios.every((day) => JSON.stringify(day.macroScenarios.map((x) => x.id)) === JSON.stringify(MACRO_SCENARIO_IDS)));
+  assert.equal(result.phase2c2.resultSchemaVersion, PHASE2C2_RESULT_SCHEMA_VERSION);
+  assert.deepEqual(result.phase2c2.scenarios.map((x) => x.id), ["rest", "training", "double_training"]);
+  assert.deepEqual(result.phase2c2.scenarios.map((x) => [x.palFinal, x.durationModifier, x.energyStartKcal]), [[1.6,0,3050],[2,0,3800],[2.25,0,4300]]);
+  assert.ok(result.phase2c2.scenarios.every((day) => JSON.stringify(day.macroScenarios.map((x) => x.id)) === JSON.stringify(MACRO_SCENARIO_IDS)));
 });
 
 test("Phase 2C2 policy tables are exact and fitness remains ordinary", () => {
@@ -466,7 +467,7 @@ test("Phase 2C2 policy tables are exact and fitness remains ordinary", () => {
     athlete_competitive:{ lower:1.7, central:1.85, upper:2 }, athlete_professional:{ lower:1.8, central:1.9, upper:2 },
   });
   const fitness = runQuestionnairePipeline(questionnaire({ dailyActivity:"fitness_2_4_week" }));
-  assert.deepEqual(fitness.scenarios.flatMap((day) => day.macroScenarios.map((x) => x.status === "calculated" && x.trace.proteinCoefficient)), [1.2,1.4,1.6,1.2,1.4,1.6]);
+  assert.deepEqual(fitness.phase2c2.scenarios.flatMap((day) => day.macroScenarios.map((x) => x.status === "calculated" && x.trace.proteinCoefficient)), [1.2,1.4,1.6,1.2,1.4,1.6]);
 });
 
 test("decimal one-place ties-to-even boundaries are deterministic", () => {
@@ -475,7 +476,7 @@ test("decimal one-place ties-to-even boundaries are deterministic", () => {
 
 test("approved professional macro fixture matches exactly", () => {
   const result = runQuestionnairePipeline(athleteQuestionnaire());
-  const macros = result.scenarios.find((x) => x.id === "training").macroScenarios;
+  const macros = result.phase2c2.scenarios.find((x) => x.id === "training").macroScenarios;
   assert.deepEqual(macros.map((x) => x.status === "calculated" && [x.energyKcal,x.trace.proteinCoefficient,x.proteinG,x.trace.fatCoefficient,x.fatG,x.carbohydrateG,x.macroEnergyKcal,x.deviationKcal]), [
     [3550,1.8,154.8,0.9,78.9,555.2,3550.1,0.1], [3800,1.9,163.4,1,86,593.1,3800,0], [4050,2,172,1.1,94.6,627.7,4050.2,0.2],
   ]);
@@ -501,8 +502,8 @@ test("negative carbohydrate fails closed without public macro targets", () => {
 
 test("goal and contextual day data cannot change macro coefficients", () => {
   const goalResults = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline(questionnaire({ goal })));
-  assert.ok(goalResults.every((x) => JSON.stringify(x.scenarios.map((d) => d.macroScenarios)) === JSON.stringify(goalResults[0].scenarios.map((d) => d.macroScenarios))));
-  assert.ok(goalResults.every((x) => x.appliedGoalMultiplier === 1));
+  assert.ok(goalResults.every((x) => JSON.stringify(x.phase2c2.scenarios.map((d) => d.macroScenarios)) === JSON.stringify(goalResults[0].phase2c2.scenarios.map((d) => d.macroScenarios))));
+  assert.ok(goalResults.every((x) => x.phase2c2.appliedGoalMultiplier === 1));
 });
 
 test("Phase 2C2 non-calculated variants serialize no nutrition numbers", () => {
@@ -512,9 +513,80 @@ test("Phase 2C2 non-calculated variants serialize no nutrition numbers", () => {
 
 test("Phase 2C2 session compatibility rejects old and incomplete payloads", () => {
   const result = runQuestionnairePipeline(questionnaire());
-  assert.equal(isCompatiblePhase2C2Payload(JSON.parse(JSON.stringify(result))), true);
-  assert.equal(isCompatiblePhase2C2Payload({ ...result, resultSchemaVersion:"nutrimind.phase2c1.result.v1" }), false);
-  const incomplete = JSON.parse(JSON.stringify(result)); delete incomplete.scenarios[0].macroScenarios[2];
+  assert.equal(isCompatiblePhase2C2Payload(JSON.parse(JSON.stringify(result.phase2c2))), true);
+  assert.equal(isCompatiblePhase2C2Payload({ ...result.phase2c2, resultSchemaVersion:"nutrimind.phase2c1.result.v1" }), false);
+  const incomplete = JSON.parse(JSON.stringify(result.phase2c2)); delete incomplete.scenarios[0].macroScenarios[2];
   assert.equal(isCompatiblePhase2C2Payload(incomplete), false);
   assert.equal(isCompatiblePhase2C2Payload("malformed"), false);
+});
+
+test("Phase 2D1 adult baseline uses sex only and ordinary exercise is non-numeric", () => {
+  const female = runQuestionnairePipeline(questionnaire({ sexForFormula:"female", weightKg:45 }));
+  const male = runQuestionnairePipeline(questionnaire({ sexForFormula:"male", weightKg:120 }));
+  assert.equal(female.baselineTotalWater.totalWaterMl, 2000);
+  assert.equal(male.baselineTotalWater.totalWaterMl, 2500);
+  assert.equal(female.exerciseFluidGuidance.status, "not_applicable");
+  assert.equal(Object.hasOwn(female.exerciseFluidGuidance, "lowerMl"), false);
+});
+
+test("Phase 2D1 exercise ranges and raw trace match approved fixtures", () => {
+  const fixtures = [[45,300,600],[90,600,1200],[100,650,1350]];
+  for (const [minutes, lower, upper] of fixtures) {
+    const result = runQuestionnairePipeline(athleteQuestionnaire({ typicalSessionMinutes:minutes }));
+    assert.deepEqual([result.exerciseFluidGuidance.lowerMl,result.exerciseFluidGuidance.upperMl],[lower,upper]);
+  }
+  const trace = runQuestionnairePipeline(athleteQuestionnaire({ typicalSessionMinutes:100 })).calculationTrace[1];
+  assert.ok(Math.abs(trace.outputs.rawLowerMl - 666.6666666666666) < 1e-9);
+  assert.ok(Math.abs(trace.outputs.rawUpperMl - 1333.3333333333333) < 1e-9);
+});
+
+test("Phase 2D1 athlete level, goal, and body weight cannot change hydration", () => {
+  const levels = ["amateur","competitive","professional"].map((sportLevel) => runQuestionnairePipeline(athleteQuestionnaire({ sportLevel, typicalSessionMinutes:90 })));
+  assert.deepEqual(levels.map((x) => [x.exerciseFluidGuidance.lowerMl,x.exerciseFluidGuidance.upperMl]), [[600,1200],[600,1200],[600,1200]]);
+  const goals = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline(athleteQuestionnaire({ goal, typicalSessionMinutes:90 })));
+  assert.ok(goals.every((x) => JSON.stringify(x.exerciseFluidGuidance) === JSON.stringify(goals[0].exerciseFluidGuidance)));
+  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ weightKg:60 })).baselineTotalWater.totalWaterMl, runQuestionnairePipeline(athleteQuestionnaire({ weightKg:100 })).baselineTotalWater.totalWaterMl);
+});
+
+test("Phase 2D1 beverage bands map exactly and missing remains non-blocking", () => {
+  const expected = [[0,"under_1_5_l","До 1,5 л"],[1,"between_1_5_and_2_l","1,5–2 л"],[2,"over_2_l","Более 2 л"]];
+  for (const [selection,band,label] of expected) {
+    const result = runQuestionnairePipeline(questionnaire({ selections:[1,0,0,3,1,0,0,selection,1] }));
+    assert.deepEqual([result.hydrationInputContext.beverageIntakeBand,result.hydrationInputContext.displayLabel],[band,label]);
+  }
+  const missing = runQuestionnairePipeline(questionnaire({ selections:[1,0,0,3,1,0,0] }));
+  assert.equal(missing.status,"calculated"); assert.equal(missing.hydrationInputContext.beverageIntakeBand,"not_provided"); assert.ok(missing.warnings.includes("hydration_intake_not_provided"));
+});
+
+test("unsupported hydration value fails closed without nutrition numbers", () => {
+  const result = runQuestionnairePipeline(questionnaire({ selections:[1,0,0,3,1,0,0,9,1] }));
+  assert.equal(result.status,"invalid_input"); assert.ok(result.issues.some((x) => x.code === "QUESTIONNAIRE_UNSUPPORTED_HYDRATION_VALUE"));
+  for (const key of ["phase2c2","baselineTotalWater","exerciseFluidGuidance","ree","scenarios"]) assert.equal(Object.hasOwn(result,key),false);
+});
+
+test("double training keeps one-session range and has no numeric double total", () => {
+  const result = runQuestionnairePipeline(athleteQuestionnaire({ doubleTrainingDays:true, typicalSessionMinutes:90 }));
+  assert.deepEqual([result.exerciseFluidGuidance.lowerMl,result.exerciseFluidGuidance.upperMl],[600,1200]);
+  assert.deepEqual(result.doubleSessionGuidance,{ status:"second_duration_missing", numericTotalAvailable:false });
+  assert.ok(result.warnings.includes("double_session_duration_missing"));
+});
+
+test("Phase 2D1 non-calculated variants never embed Phase 2C2 numbers", () => {
+  const cases = [runQuestionnairePipeline(questionnaire({ ageGroup:"minor", ageYears:15, guardianRole:"parent" })), runQuestionnairePipeline(questionnaire({ selections:[1,0,0,2,1,0,0,0,1] })), runQuestionnairePipeline(questionnaire({ dailyActivity:undefined }))];
+  for (const result of cases) for (const key of ["phase2c2","baselineTotalWater","exerciseFluidGuidance","ree","scenarios","totalWaterMl","energyStartKcal","proteinG"]) assert.equal(JSON.stringify(result).includes(`\"${key}\"`),false);
+});
+
+test("Phase 2D1 schema rejects old, malformed, and incomplete payloads", () => {
+  const result = runQuestionnairePipeline(questionnaire());
+  assert.equal(isCompatiblePhase2D1Payload(JSON.parse(JSON.stringify(result))),true);
+  assert.equal(isCompatiblePhase2D1Payload(result.phase2c2),false);
+  const incomplete = JSON.parse(JSON.stringify(result)); delete incomplete.baselineTotalWater.includesFoodWater;
+  assert.equal(isCompatiblePhase2D1Payload(incomplete),false); assert.equal(isCompatiblePhase2D1Payload("malformed"),false);
+});
+
+test("Phase 2D1 rounding is ties-to-even and contract never sums scopes", () => {
+  assert.equal(roundToNearest50MlTiesToEven(625),600); assert.equal(roundToNearest50MlTiesToEven(675),700);
+  const result = runQuestionnairePipeline(athleteQuestionnaire());
+  assert.equal(Object.hasOwn(result,"combinedDailyWaterTarget"),false);
+  assert.equal(result.calculationTrace[2].outputs.combinedDailyWaterTargetCreated,false);
 });
