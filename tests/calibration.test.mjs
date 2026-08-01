@@ -4,6 +4,7 @@ import { addLocalCalendarDays, createCalibrationJournal, deriveJournalStatus, el
 import { isCalibrationEntry, parseCalibrationJournal } from "../core/calibration/schema.ts";
 import { deriveCalibrationSummary } from "../core/calibration/summary.ts";
 import { CALIBRATION_ENTRY_SCHEMA } from "../core/calibration/types.ts";
+import { transitionDeleteConfirmation } from "../app/calibration/delete-confirmation-state.ts";
 
 const source = { sourceSchemaVersion: "nutrimind.phase2d1.result.v1", sourceStatus: "calculated", profileKind: "athlete", goal: "maintenance", availableDayTypes: ["rest", "single_training"] };
 const journal = (startDate = "2026-03-20") => createCalibrationJournal(source, { journalId: "journal-1", startDate, timeZone: "Europe/Moscow", nowIso: "2026-03-20T08:00:00.000Z" });
@@ -69,3 +70,12 @@ test("summary is explicitly observation only", () => assert.ok(deriveCalibration
 test("summary never contains adjustment output", () => { const result = deriveCalibrationSummary(journal(), "2026-03-20"); assert.equal("adjustment" in result, false); assert.equal("recommendation" in result, false); });
 test("summary reports frozen safety state", () => { const value = journal(); value.status = "safety_context_changed"; assert.equal(deriveCalibrationSummary(value, "2026-03-21").status, "safety_context_changed"); });
 test("summary reports expired state", () => assert.equal(deriveCalibrationSummary(journal(), "2026-04-20").status, "expired"));
+
+test("first delete action only opens confirmation", () => assert.equal(transitionDeleteConfirmation("closed", "open"), "open"));
+test("cancel closes confirmation without deletion", () => assert.equal(transitionDeleteConfirmation("open", "cancel"), "closed"));
+test("confirm starts exactly one pending deletion", () => assert.equal(transitionDeleteConfirmation("open", "confirm"), "deleting"));
+test("repeated confirm is blocked while deletion is pending", () => assert.equal(transitionDeleteConfirmation("deleting", "confirm"), "deleting"));
+test("pending deletion cannot be cancelled", () => assert.equal(transitionDeleteConfirmation("deleting", "cancel"), "deleting"));
+test("success closes confirmation only after pending deletion", () => assert.equal(transitionDeleteConfirmation("deleting", "success"), "closed"));
+test("delete failure restores confirmation for retry", () => assert.equal(transitionDeleteConfirmation("deleting", "failure"), "open"));
+test("success cannot bypass an unconfirmed delete", () => assert.equal(transitionDeleteConfirmation("open", "success"), "open"));

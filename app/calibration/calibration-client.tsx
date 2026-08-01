@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { isCompatiblePhase2D1Payload, type Phase2D1Result } from "../../core/index";
 import { createCalibrationJournal, deriveJournalStatus, elapsedCalendarDays, todayLocalDate } from "../../core/calibration/policy";
 import { sourceFromPhase2D1 } from "../../core/calibration/source";
 import { deleteActiveJournal, loadActiveJournal, saveActiveJournal, type JournalLoadResult } from "../../core/calibration/storage";
 import { deriveCalibrationSummary } from "../../core/calibration/summary";
 import { ADHERENCE_VALUES, ACTUAL_TRAINING_VALUES, ATYPICAL_CONTEXT_VALUES, CALIBRATION_ENTRY_SCHEMA, DAY_TYPES, RECOVERY_VALUES, SLEEP_VALUES, THREE_LEVEL_VALUES, TRAINING_QUALITY_VALUES, WEIGHT_CONDITIONS, WELLBEING_VALUES, type Adherence, type CalibrationEntry, type CalibrationJournal, type DayType } from "../../core/calibration/types";
+import { transitionDeleteConfirmation, type DeleteConfirmationState } from "./delete-confirmation-state";
 
 const labels: Record<string, string> = {
   rest: "День отдыха", single_training: "Одна тренировка", double_training: "Две тренировки", other: "Другой день",
@@ -30,6 +31,11 @@ export default function CalibrationClient() {
   const [consent, setConsent] = useState(false);
   const [message, setMessage] = useState("");
   const [confirmSafety, setConfirmSafety] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState>("closed");
+  const [deleteError, setDeleteError] = useState("");
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null);
   const today = todayLocalDate();
   const journal = loaded?.kind === "available" ? loaded.journal : null;
   const [date, setDate] = useState(today);
@@ -37,6 +43,22 @@ export default function CalibrationClient() {
   const [adherence, setAdherence] = useState<Adherence>("mostly");
   const [optional, setOptional] = useState<Record<string, string>>({});
   const [weight, setWeight] = useState("");
+
+  useEffect(() => {
+    const dialog = deleteDialogRef.current;
+    if (deleteConfirmation === "open" && dialog && !dialog.open) {
+      dialog.showModal();
+      deleteCancelRef.current?.focus();
+    }
+    if (deleteConfirmation !== "open") return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      dialog?.close();
+    };
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => document.removeEventListener("keydown", closeOnEscape, true);
+  }, [deleteConfirmation]);
 
   function hydrateForm(target: CalibrationJournal, targetDate: string) {
     const existing = target.entries.find((entry) => entry.date === targetDate);
@@ -79,12 +101,54 @@ export default function CalibrationClient() {
     try { await saveActiveJournal(next, today); setLoaded({ kind: "available", journal: next }); setConfirmSafety(false); setMessage("Наблюдение остановлено."); } catch { setMessage("Не удалось сохранить остановку наблюдения."); }
   }
 
-  async function clearJournal() { try { await deleteActiveJournal(); setLoaded({ kind: "empty" }); setConsent(false); setMessage("Локальный журнал удалён."); } catch { setMessage("Не удалось удалить локальный журнал."); } }
+  function requestJournalDeletion(event: MouseEvent<HTMLButtonElement>) {
+    if (deleteConfirmation !== "closed") return;
+    deleteTriggerRef.current = event.currentTarget;
+    setDeleteError("");
+    setDeleteConfirmation((state) => transitionDeleteConfirmation(state, "open"));
+  }
+
+  function closeDeleteConfirmation() {
+    if (deleteConfirmation === "deleting") return;
+    deleteDialogRef.current?.close();
+  }
+
+  function handleDeleteDialogClose() {
+    setDeleteConfirmation("closed");
+    deleteTriggerRef.current?.focus();
+  }
+
+  async function clearJournal() {
+    if (deleteConfirmation !== "open") return;
+    setDeleteConfirmation((state) => transitionDeleteConfirmation(state, "confirm"));
+    setDeleteError("");
+    try {
+      await deleteActiveJournal();
+      setLoaded({ kind: "empty" });
+      setConsent(false);
+      setMessage("Локальный журнал удалён.");
+      setDeleteConfirmation("closed");
+      deleteDialogRef.current?.close();
+    } catch {
+      setDeleteConfirmation((state) => transitionDeleteConfirmation(state, "failure"));
+      setDeleteError("Не удалось удалить локальный журнал. Данные не были удалены.");
+    }
+  }
+
+  const deleteDialog = <dialog ref={deleteDialogRef} className="confirmation-card delete-confirmation" aria-labelledby="delete-journal-title" aria-describedby="delete-journal-description" onCancel={(event) => { event.preventDefault(); if (deleteConfirmation !== "deleting") event.currentTarget.close(); }} onKeyDown={(event) => { if (event.key === "Escape" && deleteConfirmation !== "deleting") { event.preventDefault(); event.currentTarget.close(); } }} onClose={handleDeleteDialogClose}>
+    <h2 id="delete-journal-title">Удалить журнал наблюдений?</h2>
+    <p id="delete-journal-description">Все записи этого 14-дневного наблюдения будут удалены из этого браузера. Отменить это действие после удаления будет невозможно.</p>
+    {deleteError && <p className="delete-error" role="alert">{deleteError}</p>}
+    <div className="confirmation-actions">
+      <button ref={deleteCancelRef} type="button" onClick={closeDeleteConfirmation} disabled={deleteConfirmation === "deleting"}>Отмена</button>
+      <button className="confirm-delete" type="button" onClick={() => { void clearJournal(); }} disabled={deleteConfirmation === "deleting"}>{deleteConfirmation === "deleting" ? "Удаление…" : "Удалить журнал"}</button>
+    </div>
+  </dialog>;
 
   if (!loaded) return <section className="calibration-shell"><p>Загрузка локального журнала…</p></section>;
-  if (loaded.kind === "corrupt") return <StateCard title="Журнал повреждён" text="Формат локальных данных не прошёл строгую проверку. Они не используются и не мигрируются автоматически."><button onClick={clearJournal}>Сбросить повреждённые данные</button></StateCard>;
+  if (loaded.kind === "corrupt") return <><StateCard title="Журнал повреждён" text="Формат локальных данных не прошёл строгую проверку. Они не используются и не мигрируются автоматически."><button onClick={requestJournalDeletion}>Сбросить повреждённые данные</button></StateCard>{deleteDialog}</>;
   if (loaded.kind === "unavailable") return <StateCard title="Локальное хранилище недоступно" text="Журнал не может работать без IndexedDB. Данные не отправлены на сервер."><Link href="/">Вернуться на главную</Link></StateCard>;
-  if (loaded.kind === "expired") return <StateCard title="Срок журнала истёк" text="Истёкшие данные больше не доступны для наблюдения или выводов."><button onClick={clearJournal}>Удалить истёкший журнал</button></StateCard>;
+  if (loaded.kind === "expired") return <><StateCard title="Срок журнала истёк" text="Истёкшие данные больше не доступны для наблюдения или выводов."><button onClick={requestJournalDeletion}>Удалить истёкший журнал</button></StateCard>{deleteDialog}</>;
   if (!journal) {
     const source = sourceResult ? sourceFromPhase2D1(sourceResult) : null;
     return <section className="calibration-shell"><p className="eyebrow">Phase 2D2A · наблюдение</p><h1>14-дневный калибровочный журнал</h1><p>Это журнал наблюдений. Он не меняет расчёт энергии, КБЖУ или гидратации, не ставит диагнозы и не формирует рекомендации.</p><div className="privacy-card"><strong>Хранение на устройстве</strong><p>{privacyText}</p></div>{source ? <><label className="consent-row"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> Я понимаю и согласен(на) хранить журнал локально на этом устройстве.</label><button className="continue-button" disabled={!consent} onClick={startJournal}>Начать наблюдение</button></> : <div className="state-card"><h2>Сначала нужен рассчитанный результат</h2><p>Новый журнал можно начать только после успешного расчёта Phase 2D1 в текущей сессии.</p><Link className="continue-button" href="/questionnaire">Пройти анкету →</Link></div>}<p className="form-message" aria-live="polite">{message}</p></section>;
@@ -93,7 +157,7 @@ export default function CalibrationClient() {
   const frozen = journal.status === "safety_context_changed";
   return <section className="calibration-shell"><p className="eyebrow">Phase 2D2A · только наблюдение</p><h1>Калибровочный журнал</h1><div className="journal-meta"><span>День {Math.max(1, elapsedCalendarDays(journal.startDate, today))} из 14</span><span>{journal.startDate} — {journal.endDate}</span><span>{summary?.loggedDays ?? 0} записей</span></div><p className="privacy-reminder">{privacyText}</p>
     {frozen ? <div className="safety-stop" role="alert"><h2>Наблюдение остановлено</h2><p>{safetyText}</p></div> : <div className="journal-layout"><form className="calibration-form" onSubmit={(event) => { event.preventDefault(); void saveEntry(); }}><h2>Запись дня</h2><div className="field-grid"><label>Дата<input required type="date" min={journal.startDate} max={today < journal.endDate ? today : journal.endDate} value={date} onChange={(event) => setDate(event.target.value)} /></label><label>Тип дня<select required value={dayType} onChange={(event) => setDayType(event.target.value as DayType)}>{selectOptions(DAY_TYPES)}</select></label><label>Следование выбранному сценарию<select required value={adherence} onChange={(event) => setAdherence(event.target.value as Adherence)}>{selectOptions(ADHERENCE_VALUES)}</select></label><OptionalSelect label="Фактическая тренировка" name="actualTraining" values={ACTUAL_TRAINING_VALUES} state={optional} setState={setOptional} /><label>Вес, кг (необязательно)<input inputMode="decimal" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="Например, 72,4" /></label><OptionalSelect label="Условия взвешивания" name="weightCondition" values={WEIGHT_CONDITIONS} state={optional} setState={setOptional} /><OptionalSelect label="Голод" name="hunger" values={THREE_LEVEL_VALUES} state={optional} setState={setOptional} /><OptionalSelect label="Энергия" name="energy" values={THREE_LEVEL_VALUES} state={optional} setState={setOptional} /><OptionalSelect label="Сон" name="sleep" values={SLEEP_VALUES} state={optional} setState={setOptional} /><OptionalSelect label="Восстановление" name="recovery" values={RECOVERY_VALUES} state={optional} setState={setOptional} /><OptionalSelect label="Качество тренировки" name="trainingQuality" values={TRAINING_QUALITY_VALUES} state={optional} setState={setOptional} /><OptionalSelect label="Общее самочувствие" name="overallWellbeing" values={WELLBEING_VALUES} state={optional} setState={setOptional} /><OptionalSelect label="Нетипичный контекст" name="atypicalContext" values={ATYPICAL_CONTEXT_VALUES} state={optional} setState={setOptional} /></div><button className="continue-button" type="submit">Сохранить запись</button><p className="form-message" aria-live="polite">{message}</p></form><SummaryPanel summary={summary!} /></div>}
-    <div className="journal-actions"><button className="danger-link" onClick={() => setConfirmSafety(true)} disabled={frozen}>Изменился контекст здоровья или безопасности</button><button className="danger-link" onClick={clearJournal}>Удалить локальный журнал</button></div>{confirmSafety && <div className="confirmation-card" role="dialog" aria-modal="true"><h2>Остановить наблюдение?</h2><p>{safetyText}</p><button onClick={stopForSafety}>Да, остановить</button><button onClick={() => setConfirmSafety(false)}>Отмена</button></div>}
+    <div className="journal-actions"><button className="danger-link" onClick={() => setConfirmSafety(true)} disabled={frozen}>Изменился контекст здоровья или безопасности</button><button className="danger-link" onClick={requestJournalDeletion}>Удалить локальный журнал</button></div>{confirmSafety && <div className="confirmation-card" role="dialog" aria-modal="true"><h2>Остановить наблюдение?</h2><p>{safetyText}</p><button onClick={stopForSafety}>Да, остановить</button><button onClick={() => setConfirmSafety(false)}>Отмена</button></div>}{deleteDialog}
   </section>;
 }
 
