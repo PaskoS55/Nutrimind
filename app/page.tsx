@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import ProductHeader from "./components/ProductHeader";
+import CalibrationEntryPoint from "./components/CalibrationEntryPoint";
 
 const steps = [
   [
@@ -43,6 +44,8 @@ export default function Home() {
           </Link>
         </div>
       </ProductHeader>
+
+      <CalibrationEntryPoint compact />
 
       <section className="original-hero">
         <div className="original-hero-copy">
