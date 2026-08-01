@@ -153,6 +153,7 @@ export type Phase2BResult =
   | (Phase2BBase & { status: Exclude<Phase2BStatus, "calculated"> });
 
 export const PHASE2C1_RESULT_SCHEMA_VERSION = "nutrimind.phase2c1.result.v1" as const;
+export const PHASE2C2_RESULT_SCHEMA_VERSION = "nutrimind.phase2c2.result.v1" as const;
 export type ScenarioId = "typical_day" | "rest" | "training" | "double_training";
 export type ScenarioLabelCode = "day.typical" | "day.rest" | "day.training" | "day.double_training";
 export type GoalStatus = "disabled_pending_safety_screen" | "deferred_to_goal_phase" | "neutral_in_phase2c1";
@@ -171,10 +172,30 @@ export interface EnergyScenario {
   warnings: string[];
   trace: { path: string; value: TraceValue }[];
 }
+export type MacroScenarioId = "lower" | "central" | "upper";
+export type MacroProfileCategory = "ordinary_adult" | "athlete_amateur" | "athlete_competitive" | "athlete_professional";
+export interface MacroTrace {
+  energyStartKcal: number; scenarioFactor: 0.94 | 1 | 1.06; energyRawKcal: number; energyKcal: number;
+  energyRoundingRuleId: "nearest_50_ties_to_even"; profileCategory: MacroProfileCategory;
+  proteinCoefficient: number; proteinRawG: number; proteinRoundedG: number;
+  fatCoefficient: number; fatByWeightRawG: number; fatEnergyFloorRawG: number;
+  fatFloorSource: "weight_based" | "energy_20_percent"; fatSelectedRawG: number; fatRoundedG: number;
+  carbohydrateRawG: number; carbohydrateRoundedG: number; macroEnergyKcal: number; deviationKcal: number;
+  ruleIds: string[];
+}
+export type MacroScenario =
+  | { status: "calculated"; id: MacroScenarioId; energyKcal: number; proteinG: number; fatG: number; carbohydrateG: number; macroEnergyKcal: number; deviationKcal: number; consistencyStatus: "matched"; trace: MacroTrace }
+  | { status: "needs_review"; id: MacroScenarioId; energyKcal: number; issues: ["macro_scenario_needs_review"] };
+export type Phase2C2EnergyScenario = EnergyScenario & { macroScenarios: MacroScenario[] };
 interface Phase2C1Base { status: Phase2BStatus; versions: CalculationVersions; resultSchemaVersion: typeof PHASE2C1_RESULT_SCHEMA_VERSION; engineVersion: CalculationCoreVersion; issues: CalculationIssue[]; nextStepCode: string; trace: CalculationTraceEntry[] }
 export type Phase2C1Result =
   | (Phase2C1Base & { status: "calculated"; ree: ReeResult; selectedGoal: GoalKind; goalStatus: GoalStatus; appliedGoalMultiplier: 1; scenarios: EnergyScenario[]; warnings: CalculationWarning[]; phase2c1Warnings: string[] })
   | (Phase2C1Base & { status: Exclude<Phase2BStatus, "calculated"> });
+
+interface Phase2C2Base { status: Phase2BStatus; versions: CalculationVersions; resultSchemaVersion: typeof PHASE2C2_RESULT_SCHEMA_VERSION; engineVersion: CalculationCoreVersion; issues: CalculationIssue[]; nextStepCode: string; trace: CalculationTraceEntry[] }
+export type Phase2C2Result =
+  | (Phase2C2Base & { status: "calculated"; ree: ReeResult; selectedGoal: GoalKind; goalStatus: GoalStatus; appliedGoalMultiplier: 1; scenarios: Phase2C2EnergyScenario[]; warnings: CalculationWarning[]; phase2c1Warnings: string[]; phase2c2Warnings: string[] })
+  | (Phase2C2Base & { status: Exclude<Phase2BStatus, "calculated"> });
 
 export interface CalculationAdmission {
   admitted: boolean;

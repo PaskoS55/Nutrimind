@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ORDINARY_ACTIVITIES, PHASE2C1_RESULT_SCHEMA_VERSION, QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, athleteDurationModifier, buildPalScenarios, calculateEnergyStart, clampAndRoundPal, evaluateSafety, roundToNearest50TiesToEven, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
+import { FAT_COEFFICIENTS, MACRO_ENERGY_FACTORS, MACRO_SCENARIO_IDS, ORDINARY_ACTIVITIES, PHASE2C2_RESULT_SCHEMA_VERSION, PROTEIN_COEFFICIENTS, QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, athleteDurationModifier, buildMacroScenarios, buildPalScenarios, calculateEnergyStart, clampAndRoundPal, evaluateSafety, isCompatiblePhase2C2Payload, roundToNearest50TiesToEven, roundToOneDecimalTiesToEven, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
 
 const adult = (changes = {}) => ({
   surveySpecVersion: "0.1.1-draft", userType: "general_user", ageGroup: "adult",
@@ -331,10 +331,10 @@ test("Phase 2B non-calculated variants contain no forbidden numeric result field
   for (const result of cases) for (const key of ["ree", "calories", "macros", "energyStart"]) assert.equal(Object.hasOwn(result, key), false);
 });
 
-test("questionnaire adapter runs the production Phase 2C1 pipeline", () => {
+test("questionnaire adapter runs the production Phase 2C2 pipeline", () => {
   const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal: "maintenance", dailyActivity: "mostly_sitting", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true });
   assert.equal(result.status, "calculated");
-  assert.equal(result.resultSchemaVersion, PHASE2C1_RESULT_SCHEMA_VERSION);
+  assert.equal(result.resultSchemaVersion, PHASE2C2_RESULT_SCHEMA_VERSION);
   assert.equal(result.scenarios[0].palFinal, 1.4);
   assert.doesNotMatch(JSON.stringify(result), /demo-report|daily calorie target/i);
   assert.equal(JSON.parse(JSON.stringify(result)).status, "calculated");
@@ -447,4 +447,74 @@ test("Phase 2C1 non-calculated JSON has no numeric nutrition fields", () => {
     const serialized = JSON.parse(JSON.stringify(result));
     for (const key of ["ree","scenarios","pal","energyStart","macros","protein","fat","carbohydrates"]) assert.equal(Object.hasOwn(serialized,key), false);
   }
+});
+
+test("Phase 2C2 preserves Phase 2C1 days and attaches ordered macro scenarios", () => {
+  const result = runQuestionnairePipeline(athleteQuestionnaire({ doubleTrainingDays: true }));
+  assert.equal(result.status, "calculated");
+  assert.equal(result.resultSchemaVersion, PHASE2C2_RESULT_SCHEMA_VERSION);
+  assert.deepEqual(result.scenarios.map((x) => x.id), ["rest", "training", "double_training"]);
+  assert.deepEqual(result.scenarios.map((x) => [x.palFinal, x.durationModifier, x.energyStartKcal]), [[1.6,0,3050],[2,0,3800],[2.25,0,4300]]);
+  assert.ok(result.scenarios.every((day) => JSON.stringify(day.macroScenarios.map((x) => x.id)) === JSON.stringify(MACRO_SCENARIO_IDS)));
+});
+
+test("Phase 2C2 policy tables are exact and fitness remains ordinary", () => {
+  assert.deepEqual(MACRO_ENERGY_FACTORS, { lower:0.94, central:1, upper:1.06 });
+  assert.deepEqual(FAT_COEFFICIENTS, { lower:0.9, central:1, upper:1.1 });
+  assert.deepEqual(PROTEIN_COEFFICIENTS, {
+    ordinary_adult:{ lower:1.2, central:1.4, upper:1.6 }, athlete_amateur:{ lower:1.6, central:1.7, upper:1.8 },
+    athlete_competitive:{ lower:1.7, central:1.85, upper:2 }, athlete_professional:{ lower:1.8, central:1.9, upper:2 },
+  });
+  const fitness = runQuestionnairePipeline(questionnaire({ dailyActivity:"fitness_2_4_week" }));
+  assert.deepEqual(fitness.scenarios.flatMap((day) => day.macroScenarios.map((x) => x.status === "calculated" && x.trace.proteinCoefficient)), [1.2,1.4,1.6,1.2,1.4,1.6]);
+});
+
+test("decimal one-place ties-to-even boundaries are deterministic", () => {
+  assert.deepEqual([1.04,1.05,1.06,1.15,2.25,2.35].map(roundToOneDecimalTiesToEven), [1,1,1.1,1.2,2.2,2.4]);
+});
+
+test("approved professional macro fixture matches exactly", () => {
+  const result = runQuestionnairePipeline(athleteQuestionnaire());
+  const macros = result.scenarios.find((x) => x.id === "training").macroScenarios;
+  assert.deepEqual(macros.map((x) => x.status === "calculated" && [x.energyKcal,x.trace.proteinCoefficient,x.proteinG,x.trace.fatCoefficient,x.fatG,x.carbohydrateG,x.macroEnergyKcal,x.deviationKcal]), [
+    [3550,1.8,154.8,0.9,78.9,555.2,3550.1,0.1], [3800,1.9,163.4,1,86,593.1,3800,0], [4050,2,172,1.1,94.6,627.7,4050.2,0.2],
+  ]);
+});
+
+test("fat source, carbohydrate remainder and closure use displayed rounded grams", () => {
+  const weightWins = buildMacroScenarios(1500,100,"ordinary_adult")[0];
+  const energyWins = buildMacroScenarios(5000,86,"athlete_professional")[1];
+  assert.equal(weightWins.trace.fatFloorSource, "weight_based");
+  assert.equal(energyWins.trace.fatFloorSource, "energy_20_percent");
+  for (const macro of buildMacroScenarios(3800,86,"athlete_professional")) {
+    assert.equal(macro.status, "calculated");
+    assert.ok(Math.abs(macro.deviationKcal) <= 0.5);
+    assert.equal(macro.macroEnergyKcal, roundToOneDecimalTiesToEven(macro.proteinG*4 + macro.fatG*9 + macro.carbohydrateG*4));
+  }
+});
+
+test("negative carbohydrate fails closed without public macro targets", () => {
+  const macro = buildMacroScenarios(100,200,"athlete_professional")[0];
+  assert.deepEqual(macro, { status:"needs_review", id:"lower", energyKcal:100, issues:["macro_scenario_needs_review"] });
+  for (const key of ["proteinG","fatG","carbohydrateG","trace"]) assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(macro)),key), false);
+});
+
+test("goal and contextual day data cannot change macro coefficients", () => {
+  const goalResults = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline(questionnaire({ goal })));
+  assert.ok(goalResults.every((x) => JSON.stringify(x.scenarios.map((d) => d.macroScenarios)) === JSON.stringify(goalResults[0].scenarios.map((d) => d.macroScenarios))));
+  assert.ok(goalResults.every((x) => x.appliedGoalMultiplier === 1));
+});
+
+test("Phase 2C2 non-calculated variants serialize no nutrition numbers", () => {
+  const cases = [runQuestionnairePipeline(questionnaire({ ageGroup:"minor", ageYears:15, guardianRole:"parent" })), runQuestionnairePipeline(questionnaire({ selections:[1,0,0,2,1,0,0,0,1] })), runQuestionnairePipeline(questionnaire({ dailyActivity:undefined }))];
+  for (const result of cases) { const json = JSON.stringify(result); for (const key of ["ree","scenarios","proteinG","fatG","carbohydrateG","energyStartKcal"]) assert.equal(json.includes(`\"${key}\"`), false); }
+});
+
+test("Phase 2C2 session compatibility rejects old and incomplete payloads", () => {
+  const result = runQuestionnairePipeline(questionnaire());
+  assert.equal(isCompatiblePhase2C2Payload(JSON.parse(JSON.stringify(result))), true);
+  assert.equal(isCompatiblePhase2C2Payload({ ...result, resultSchemaVersion:"nutrimind.phase2c1.result.v1" }), false);
+  const incomplete = JSON.parse(JSON.stringify(result)); delete incomplete.scenarios[0].macroScenarios[2];
+  assert.equal(isCompatiblePhase2C2Payload(incomplete), false);
+  assert.equal(isCompatiblePhase2C2Payload("malformed"), false);
 });

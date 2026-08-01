@@ -1,5 +1,5 @@
 import { validateSurveyInput } from "./validation.ts";
-import { CALCULATION_CORE_VERSION, ORDINARY_ACTIVITIES, runPhase2C1, type OrdinaryActivity, type Phase2C1Result } from "./calculation/index.ts";
+import { CALCULATION_CORE_VERSION, ORDINARY_ACTIVITIES, runPhase2C2, type OrdinaryActivity, type Phase2C2Result } from "./calculation/index.ts";
 
 export const QUESTIONNAIRE_SECTION_TITLES = [
   "Профиль", "Исходные данные", "Спорт и цель", "Безопасность", "Текущее питание",
@@ -36,9 +36,9 @@ export function adaptQuestionnaireAnswers(raw: QuestionnaireAnswers) {
   return { raw, validation: validateSurveyInput(input) };
 }
 
-export function runQuestionnairePipeline(raw: QuestionnaireAnswers): Phase2C1Result {
+export function runQuestionnairePipeline(raw: QuestionnaireAnswers): Phase2C2Result {
   const adapted = adaptQuestionnaireAnswers(raw);
   const athlete = raw.userType === "athlete";
   const activity = athlete ? { kind: "athlete" as const, sportLevel: raw.sportLevel!, typicalSessionMinutes: raw.typicalSessionMinutes!, sessionsPerWeek: raw.sessionsPerWeek, doubleTrainingDays: raw.doubleTrainingDays, dayType: "training" as const } : { kind: "general_user" as const, dailyActivity: raw.dailyActivity as OrdinaryActivity, dayType: "rest" as const };
-  return runPhase2C1(adapted.validation, { calculationCoreVersion: CALCULATION_CORE_VERSION, activity: { vocabulary: "phase_2_canonical", value: activity, sourceValue: { audience: raw.userType ?? null, activity: raw.dailyActivity ?? null, level: raw.sportLevel ?? null, sessionDurationMin: raw.typicalSessionMinutes ?? null, sessionsPerWeek: raw.sessionsPerWeek ?? null, doubleDays: raw.doubleTrainingDays ?? null } }, goal: { vocabulary: "phase_2_canonical", value: raw.goal!, sourceValue: raw.goal ?? null } });
+  return runPhase2C2(adapted.validation, { calculationCoreVersion: CALCULATION_CORE_VERSION, activity: { vocabulary: "phase_2_canonical", value: activity, sourceValue: { audience: raw.userType ?? null, activity: raw.dailyActivity ?? null, level: raw.sportLevel ?? null, sessionDurationMin: raw.typicalSessionMinutes ?? null, sessionsPerWeek: raw.sessionsPerWeek ?? null, doubleDays: raw.doubleTrainingDays ?? null } }, goal: { vocabulary: "phase_2_canonical", value: raw.goal!, sourceValue: raw.goal ?? null } });
 }

@@ -218,3 +218,7 @@ No implementation should resolve these by assumption:
 10. Implement the pipeline orchestrator as the only public runtime calculation entry point and enforce suppression by construction.
 11. Add complete production-import tests, determinism checks, and trace snapshots.
 12. Integrate with an outer application layer only in a later authorized phase.
+
+## 12. Implemented Phase 2C2 boundary
+
+Phase 2C2 consumes only a real eligible `Phase2C1Result` with `status: calculated` and enriches each existing day scenario with the ordered nested macro scenarios `lower`, `central`, and `upper`. It does not recalculate REE, PAL, duration modifiers, day availability, or Phase 2C1 EnergyStart. The current result/session schema is `nutrimind.phase2c2.result.v1`; older Phase 2B and Phase 2C1 payloads are incompatible. Hydration, sweat rate, and fourteen-day calibration remain deferred.
