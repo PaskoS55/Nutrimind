@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductHeader from "../components/ProductHeader";
-import { QUESTIONNAIRE_SECTION_TITLES, runQuestionnairePipeline, type QuestionnaireGoal } from "../../core/index";
+import { QUESTIONNAIRE_SECTION_TITLES, runQuestionnairePipeline, type OrdinaryActivity, type QuestionnaireGoal } from "../../core/index";
 
 type Option = { title: string; note?: string; value?: string };
 type Step = {
@@ -23,7 +23,7 @@ const steps: Step[] = [
     intro: "Первый выбор определяет дальнейшую ветку вопросов.",
     question: "Ваш профиль",
     options: [
-      { title: "Спортсмен", note: "Тренировки и восстановление" },
+      { title: "Спортсмен", note: "Профессиональный, соревновательный или любительский уровень" },
       {
         title: "Обычный пользователь",
         note: "Здоровье и повседневное питание",
@@ -47,7 +47,7 @@ const steps: Step[] = [
       { value: "performance_recovery", title: "Улучшить результативность и восстановление", note: "Поддержать тренировки, работоспособность и восстановление" },
       { value: "habits_wellbeing", title: "Улучшить питание и самочувствие", note: "Выстроить более регулярный и устойчивый рацион" },
     ],
-    safety: "Выбранная цель пока не изменяет калорийность: PAL, целевая энергия и КБЖУ будут подключены на следующем этапе.",
+    safety: "Выбранная цель не изменяет расчётный стартовый ориентир на этапе Phase 2C1. Автоматический дефицит или профицит не применяется; КБЖУ будет подключён позже.",
   },
   {
     label: QUESTIONNAIRE_SECTION_TITLES[3], title: "Что нужно исключить в первую очередь?", intro: "Аллергии и медицинские ограничения проверяются до рейтинга продуктов.", question: "Ограничения", options: [
@@ -115,7 +115,8 @@ export default function Home() {
   const [answers, setAnswers] = useState<number[]>(Array(9).fill(0));
   const [profile, setProfile] = useState({ ageGroup: "adult", guardianRole: "", ageYears: "", sexForFormula: "", heightCm: "", weightKg: "" });
   const [goal, setGoal] = useState<QuestionnaireGoal>("maintenance");
-  const [sport, setSport] = useState({ sportType: "hockey", sportLevel: "amateur", sessionsPerWeek: "3_4", typicalSessionMinutes: "60", doubleTrainingDays: false, dailyActivity: "moderate" });
+  const [sport, setSport] = useState({ sportType: "hockey", sportLevel: "amateur", sessionsPerWeek: "3_4", typicalSessionMinutes: "60", doubleTrainingDays: false, dailyActivity: "" as OrdinaryActivity | "" });
+  const [profileAnnouncement, setProfileAnnouncement] = useState("");
   const [consent, setConsent] = useState(false);
   const [issues, setIssues] = useState<string[]>([]);
   const current = steps[step];
@@ -123,12 +124,18 @@ export default function Home() {
     setAnswers((previous) =>
       previous.map((value, i) => (i === step ? index : value)),
     );
-  const fillDemo = () => { setAnswers([0, 0, 0, 3, 1, 2, 2, 1, 1]); setProfile({ ageGroup: "adult", guardianRole: "", ageYears: "28", sexForFormula: "male", heightCm: "189", weightKg: "86" }); setGoal("performance_recovery"); setSport({ sportType: "hockey", sportLevel: "professional", sessionsPerWeek: "5_6", typicalSessionMinutes: "90", doubleTrainingDays: false, dailyActivity: "moderate" }); setConsent(true); };
+  const fillDemo = () => { setAnswers([0, 0, 0, 3, 1, 2, 2, 1, 1]); setProfile({ ageGroup: "adult", guardianRole: "", ageYears: "28", sexForFormula: "male", heightCm: "189", weightKg: "86" }); setGoal("performance_recovery"); setSport({ sportType: "hockey", sportLevel: "professional", sessionsPerWeek: "5_6", typicalSessionMinutes: "90", doubleTrainingDays: false, dailyActivity: "" }); setConsent(true); };
+  const switchToAthlete = () => {
+    setAnswers((previous) => previous.map((value, index) => index === 0 ? 0 : value));
+    setSport((previous) => ({ ...previous, dailyActivity: "" }));
+    setStep(2);
+    setProfileAnnouncement("Выбран профиль «Спортсмен». Открыты вопросы спортивной ветки.");
+  };
   const submit = () => {
     const athlete = answers[0] === 0;
-    const result = runQuestionnairePipeline({ selections: answers, userType: athlete ? "athlete" : "general_user", ageGroup: profile.ageGroup as "adult" | "minor", guardianRole: profile.guardianRole as "parent" | "legal_guardian" | "athlete_with_parent", goal, sportType: sport.sportType, sportLevel: sport.sportLevel as "professional" | "competitive" | "amateur", sessionsPerWeek: sport.sessionsPerWeek as "1_2" | "3_4" | "5_6" | "7_plus", typicalSessionMinutes: Number(sport.typicalSessionMinutes), doubleTrainingDays: sport.doubleTrainingDays, dailyActivity: sport.dailyActivity as "low" | "moderate" | "high", ageYears: Number(profile.ageYears), sexForFormula: profile.sexForFormula as "female" | "male", heightCm: Number(profile.heightCm), weightKg: Number(profile.weightKg), informationalConsent: consent });
+    const result = runQuestionnairePipeline({ selections: answers, userType: athlete ? "athlete" : "general_user", ageGroup: profile.ageGroup as "adult" | "minor", guardianRole: profile.guardianRole as "parent" | "legal_guardian" | "athlete_with_parent", goal, sportType: sport.sportType, sportLevel: sport.sportLevel as "professional" | "competitive" | "amateur", sessionsPerWeek: sport.sessionsPerWeek as "1_2" | "3_4" | "5_6" | "7_plus", typicalSessionMinutes: Number(sport.typicalSessionMinutes), doubleTrainingDays: sport.doubleTrainingDays, dailyActivity: sport.dailyActivity || undefined, ageYears: Number(profile.ageYears), sexForFormula: profile.sexForFormula as "female" | "male", heightCm: Number(profile.heightCm), weightKg: Number(profile.weightKg), informationalConsent: consent });
     if (result.status === "invalid_input") { setIssues(result.issues.filter((x) => x.severity === "error").map((x) => x.message)); setStep(1); return; }
-    sessionStorage.setItem("nutrimind.phase2b.result", JSON.stringify(result));
+    sessionStorage.setItem("nutrimind.phase2c1.result", JSON.stringify(result));
     router.push("/result");
   };
 
@@ -172,6 +179,8 @@ export default function Home() {
           </div>
           <h1 id="question-title">{current.title}</h1>
           <p className="question-intro">{current.intro}</p>
+          <p className="sr-only" aria-live="polite">{profileAnnouncement}</p>
+          {step === 0 && <div className="routing-guidance">Профиль «Спортсмен» подходит не только профессионалам. Выберите его, если регулярно тренируетесь 5 и более раз в неделю или хотите учитывать отдельные дни отдыха, одной тренировки и двойной нагрузки.</div>}
           {issues.length > 0 && <div className="safety-panel" role="alert"><span>!</span><div><b>Проверьте ответы</b><ul>{issues.map((item) => <li key={item}>{item}</li>)}</ul></div></div>}
           {step === 0 && <fieldset className="answer-group"><legend>Возрастная группа *</legend><div className="option-grid">{[["adult","Взрослый"],["minor","Несовершеннолетний"]].map(([value,title]) => <button key={value} type="button" role="radio" aria-checked={profile.ageGroup === value} className={`option-card ${profile.ageGroup === value ? "selected" : ""}`} onClick={() => setProfile({ ...profile, ageGroup: value })}><span className="check">{profile.ageGroup === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div></fieldset>}
           {step === 1 && <div className="profile-fields">
@@ -187,7 +196,12 @@ export default function Home() {
             <label>Тренировок в неделю *<select value={sport.sessionsPerWeek} onChange={(e) => setSport({ ...sport, sessionsPerWeek: e.target.value })}><option value="1_2">1–2</option><option value="3_4">3–4</option><option value="5_6">5–6</option><option value="7_plus">7 и более</option></select></label>
             <label>Обычная длительность тренировки, мин *<input type="number" min="1" value={sport.typicalSessionMinutes} onChange={(e) => setSport({ ...sport, typicalSessionMinutes: e.target.value })} /></label>
             <label className="consent-row"><input type="checkbox" checked={sport.doubleTrainingDays} onChange={(e) => setSport({ ...sport, doubleTrainingDays: e.target.checked })} /> Бывают две тренировки в день?</label>
-          </> : <label>Повседневная активность *<select value={sport.dailyActivity} onChange={(e) => setSport({ ...sport, dailyActivity: e.target.value })}><option value="low">Низкая</option><option value="moderate">Умеренная</option><option value="high">Высокая</option></select></label>}</div>}
+          </> : <div className="ordinary-activity"><fieldset className="answer-group"><legend>Повседневная активность *</legend><div className="option-grid">{[
+            ["mostly_sitting", "Преимущественно сижу", "Большая часть дня проходит сидя, регулярного движения немного."],
+            ["lots_of_walking", "Много хожу", "Регулярно хожу пешком и часто нахожусь в движении."],
+            ["physically_active_work", "Физически активная работа", "Работа или повседневные дела включают продолжительную физическую активность."],
+            ["fitness_2_4_week", "Фитнес 2–4 раза в неделю", "Регулярно тренируюсь, но не использую спортивную ветку анкеты."],
+          ].map(([value, title, note]) => <button key={value} type="button" role="radio" aria-checked={sport.dailyActivity === value} className={`option-card ${sport.dailyActivity === value ? "selected" : ""}`} onClick={() => setSport({ ...sport, dailyActivity: value as OrdinaryActivity })}><span className="check">{sport.dailyActivity === value ? "✓" : "○"}</span><span><b>{title}</b><small>{note}</small></span></button>)}</div></fieldset><div className="routing-guidance">Тренируетесь 5 и более раз в неделю? Для более точного сценария выберите профиль «Спортсмен» — в нём доступен и любительский уровень.<button type="button" className="back-button" onClick={switchToAthlete}>Перейти к профилю «Спортсмен»</button></div></div>}</div>}
           {step !== 1 && <fieldset className="answer-group">
             <legend>{current.question} *</legend>
             <div className="option-grid">

@@ -37,7 +37,8 @@ export interface SurveyInput {
   sportLevel?: "professional" | "competitive" | "amateur";
   sessionsPerWeek?: "1_2" | "3_4" | "5_6" | "7_plus";
   typicalSessionMinutes?: number;
-  dailyActivity?: "low" | "moderate" | "high";
+  doubleTrainingDays?: boolean;
+  dailyActivity?: import("./calculation/types.ts").OrdinaryActivity;
   allergies: AllergyCode[];
   otherAllergy?: string;
   normalizedOtherAllergyCode?: string;
@@ -73,7 +74,9 @@ export type ValidationIssueCode =
   | "GENERAL_BRANCH_INCOMPLETE" | "OTHER_ALLERGY_DETAILS_REQUIRED"
   | "ALLERGY_UNRESOLVED" | "SAFETY_SCREENING_MISSING"
   | "ANSWER_UNCERTAIN" | "LAB_RESULT_INCOMPLETE"
-  | "UNCONFIRMED_DEFICIENCY_CLAIM" | "CONSENT_REQUIRED";
+  | "UNCONFIRMED_DEFICIENCY_CLAIM" | "CONSENT_REQUIRED"
+  | "QUESTIONNAIRE_UNSUPPORTED_LEGACY_ACTIVITY";
+
 
 export interface ValidationIssue {
   code: ValidationIssueCode;

@@ -119,7 +119,13 @@
           "id": "dailyActivity",
           "type": "single",
           "label": "Повседневная активность",
-          "options": ["low", "moderate", "high"],
+          "options": ["mostly_sitting", "lots_of_walking", "physically_active_work", "fitness_2_4_week"],
+          "optionDetails": {
+            "mostly_sitting": { "label": "Преимущественно сижу", "supportingText": "Большая часть дня проходит сидя, регулярного движения немного." },
+            "lots_of_walking": { "label": "Много хожу", "supportingText": "Регулярно хожу пешком и часто нахожусь в движении." },
+            "physically_active_work": { "label": "Физически активная работа", "supportingText": "Работа или повседневные дела включают продолжительную физическую активность." },
+            "fitness_2_4_week": { "label": "Фитнес 2–4 раза в неделю", "supportingText": "Регулярно тренируюсь, но не использую спортивную ветку анкеты." }
+          },
           "visibleWhen": { "userType": "general_user" }
         }
       ]

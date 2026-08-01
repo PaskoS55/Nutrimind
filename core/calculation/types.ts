@@ -10,8 +10,11 @@ import type {
 export const CALCULATION_CORE_VERSION = "0.1.1-draft" as const;
 
 export type CalculationCoreVersion = typeof CALCULATION_CORE_VERSION;
+export const ORDINARY_ACTIVITIES = ["mostly_sitting", "lots_of_walking", "physically_active_work", "fitness_2_4_week"] as const;
+export type OrdinaryActivity = typeof ORDINARY_ACTIVITIES[number];
+export type LegacyOrdinaryActivity = "low" | "moderate" | "high";
 export type DayType = "rest" | "training" | "double";
-export type GoalKind = "maintenance" | "weight_loss" | "weight_gain" | "recomposition";
+export type GoalKind = "weight_loss" | "maintenance" | "muscle_gain" | "performance_recovery" | "habits_wellbeing";
 export type CalculationResultStatus = "admitted" | "blocked" | "specialist_review" | "invalid_input";
 export type CalculationStage = "normalization" | "admission" | "ree" | "result";
 export type CalculationSeverity = "error" | "warning";
@@ -26,11 +29,13 @@ export interface AthleteActivityInput {
   sportLevel: "professional" | "competitive" | "amateur";
   typicalSessionMinutes: number;
   dayType: DayType;
+  sessionsPerWeek?: "1_2" | "3_4" | "5_6" | "7_plus";
+  doubleTrainingDays?: boolean;
 }
 
 export interface GeneralUserActivityInput {
   kind: "general_user";
-  dailyActivity: "low" | "moderate" | "high";
+  dailyActivity: OrdinaryActivity;
   dayType: DayType;
 }
 
@@ -94,7 +99,10 @@ export type CalculationIssueCode =
   | "REE_POPULATION_UNAPPROVED"
   | "REE_FORMULA_AMBIGUOUS"
   | "REE_STAGE_MAPPING_DEFERRED"
-  | "SOURCE_VALUE_PRESERVED";
+  | "SOURCE_VALUE_PRESERVED"
+  | "QUESTIONNAIRE_UNSUPPORTED_LEGACY_ACTIVITY"
+  | "PAL_INPUT_MISSING"
+  | "PAL_INPUT_INVALID";
 
 export interface CalculationIssue {
   code: CalculationIssueCode;
@@ -143,6 +151,30 @@ interface Phase2BBase { status: Phase2BStatus; versions: CalculationVersions; is
 export type Phase2BResult =
   | (Phase2BBase & { status: "calculated"; ree: ReeResult; warnings: CalculationWarning[] })
   | (Phase2BBase & { status: Exclude<Phase2BStatus, "calculated"> });
+
+export const PHASE2C1_RESULT_SCHEMA_VERSION = "nutrimind.phase2c1.result.v1" as const;
+export type ScenarioId = "typical_day" | "rest" | "training" | "double_training";
+export type ScenarioLabelCode = "day.typical" | "day.rest" | "day.training" | "day.double_training";
+export type GoalStatus = "disabled_pending_safety_screen" | "deferred_to_goal_phase" | "neutral_in_phase2c1";
+export interface EnergyScenario {
+  id: ScenarioId;
+  labelCode: ScenarioLabelCode;
+  palPolicyId: "pal.demo.phase2c1.v1";
+  palBase: number;
+  durationModifier: number;
+  palBeforeClamp: number;
+  palFinal: number;
+  energyStartRawKcal: number;
+  energyStartKcal: number;
+  energyRoundingRuleId: "nearest_50_ties_to_even";
+  appliedRuleIds: string[];
+  warnings: string[];
+  trace: { path: string; value: TraceValue }[];
+}
+interface Phase2C1Base { status: Phase2BStatus; versions: CalculationVersions; resultSchemaVersion: typeof PHASE2C1_RESULT_SCHEMA_VERSION; engineVersion: CalculationCoreVersion; issues: CalculationIssue[]; nextStepCode: string; trace: CalculationTraceEntry[] }
+export type Phase2C1Result =
+  | (Phase2C1Base & { status: "calculated"; ree: ReeResult; selectedGoal: GoalKind; goalStatus: GoalStatus; appliedGoalMultiplier: 1; scenarios: EnergyScenario[]; warnings: CalculationWarning[]; phase2c1Warnings: string[] })
+  | (Phase2C1Base & { status: Exclude<Phase2BStatus, "calculated"> });
 
 export interface CalculationAdmission {
   admitted: boolean;

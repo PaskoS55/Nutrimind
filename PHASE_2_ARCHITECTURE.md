@@ -10,6 +10,8 @@ Phase 1 remains the mandatory safety boundary. A calculation may begin only afte
 
 All energy values are starting planning references, not measured requirements or confidence intervals. PAL presets remain explicitly demonstrative. No diagnosis is produced. Automatic energy reduction and automatic calibration correction remain disabled.
 
+Phase 2C1 uses exact questionnaire values only. Ordinary activity is one of `mostly_sitting`, `lots_of_walking`, `physically_active_work`, or `fitness_2_4_week`; legacy `low`, `moderate`, and `high` values fail closed. Athlete scenarios use the exact athlete level, numeric single-session duration, and explicit double-day boolean. Energy is `REE_unrounded × PAL_final`, rounded to the nearest 50 kcal with ties to even. Goals retain multiplier `1.00`. Non-calculated production variants omit REE, PAL, energy, and KBJU fields entirely; specialist review remains number-free.
+
 ## 2. Module map
 
 ```text

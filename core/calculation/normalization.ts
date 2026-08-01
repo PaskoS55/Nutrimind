@@ -10,10 +10,10 @@ import {
   type TraceValue,
 } from "./types.ts";
 
-const goals: readonly GoalKind[] = ["maintenance", "weight_loss", "weight_gain", "recomposition"];
+const goals: readonly GoalKind[] = ["weight_loss", "maintenance", "muscle_gain", "performance_recovery", "habits_wellbeing"];
 const dayTypes = ["rest", "training", "double"] as const;
 const sportLevels = ["professional", "competitive", "amateur"] as const;
-const dailyActivities = ["low", "moderate", "high"] as const;
+const dailyActivities = ["mostly_sitting", "lots_of_walking", "physically_active_work", "fitness_2_4_week"] as const;
 
 const error = (code: CalculationError["code"], path: string, message: string, ruleId: string): CalculationError =>
   ({ code, path, message, ruleId, severity: "error", stage: "normalization" });

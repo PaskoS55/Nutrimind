@@ -64,6 +64,10 @@ export function validateSurveyInput(input: unknown): ValidationResult {
     issue("error", "ATHLETE_BRANCH_INCOMPLETE", "sport_and_goal", "Athlete level, frequency and duration are required.");
   if (input.userType === "general_user" && !input.dailyActivity)
     issue("error", "GENERAL_BRANCH_INCOMPLETE", "dailyActivity", "dailyActivity is required for a general user.");
+  if (input.userType === "general_user" && ["low", "moderate", "high"].includes(String(input.dailyActivity)))
+    issue("error", "QUESTIONNAIRE_UNSUPPORTED_LEGACY_ACTIVITY", "dailyActivity", "Legacy ordinary activity is unsupported; complete the questionnaire again.");
+  if (input.userType === "general_user" && input.dailyActivity && !["mostly_sitting", "lots_of_walking", "physically_active_work", "fitness_2_4_week"].includes(String(input.dailyActivity)))
+    issue("error", "INVALID_VALUE", "dailyActivity", "dailyActivity has an unsupported value.");
 
   const allergies = Array.isArray(input.allergies) ? input.allergies : [];
   if (allergies.includes("other") && (typeof input.otherAllergy !== "string" || !input.otherAllergy.trim()))

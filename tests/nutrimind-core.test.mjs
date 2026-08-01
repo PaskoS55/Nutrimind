@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, evaluateSafety, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
+import { ORDINARY_ACTIVITIES, PHASE2C1_RESULT_SCHEMA_VERSION, QUESTIONNAIRE_FIELD_SECTION, QUESTIONNAIRE_GOALS, QUESTIONNAIRE_SECTION_TITLES, athleteDurationModifier, buildPalScenarios, calculateEnergyStart, clampAndRoundPal, evaluateSafety, roundToNearest50TiesToEven, runPhase2A, runPhase2B, runQuestionnairePipeline, validateSurveyInput } from "../core/index.ts";
 
 const adult = (changes = {}) => ({
   surveySpecVersion: "0.1.1-draft", userType: "general_user", ageGroup: "adult",
   ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65,
-  dailyActivity: "moderate", allergies: ["none"], intolerances: ["none"],
+  dailyActivity: "mostly_sitting", allergies: ["none"], intolerances: ["none"],
   medicalRestrictions: ["none"], informationalConsent: true,
   safetyScreening: { pregnancy: "not_applicable", breastfeeding: "not_applicable", eatingDisorderRisk: "no", restrictiveOrCompensatoryPractices: false },
   ...changes,
@@ -20,8 +20,8 @@ const phase2Request = (changes = {}) => ({
   calculationCoreVersion: "0.1.1-draft",
   activity: {
     vocabulary: "phase_2_canonical",
-    value: { kind: "general_user", dailyActivity: "moderate", dayType: "rest" },
-    sourceValue: { dailyActivity: "moderate", suppliedBy: "caller" },
+    value: { kind: "general_user", dailyActivity: "mostly_sitting", dayType: "rest" },
+    sourceValue: { dailyActivity: "mostly_sitting", suppliedBy: "caller" },
   },
   goal: { vocabulary: "phase_2_canonical", value: "maintenance", sourceValue: "balance_nutrition" },
   ...changes,
@@ -331,11 +331,11 @@ test("Phase 2B non-calculated variants contain no forbidden numeric result field
   for (const result of cases) for (const key of ["ree", "calories", "macros", "energyStart"]) assert.equal(Object.hasOwn(result, key), false);
 });
 
-test("questionnaire adapter runs production pipeline without inventing activity or goal mapping", () => {
-  const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal: "maintenance", dailyActivity: "moderate", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true });
+test("questionnaire adapter runs the production Phase 2C1 pipeline", () => {
+  const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal: "maintenance", dailyActivity: "mostly_sitting", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true });
   assert.equal(result.status, "calculated");
-  assert.ok(result.warnings.some((x) => x.code === "REE_STAGE_MAPPING_DEFERRED" && x.path === "request.activity"));
-  assert.ok(result.warnings.some((x) => x.code === "REE_STAGE_MAPPING_DEFERRED" && x.path === "request.goal"));
+  assert.equal(result.resultSchemaVersion, PHASE2C1_RESULT_SCHEMA_VERSION);
+  assert.equal(result.scenarios[0].palFinal, 1.4);
   assert.doesNotMatch(JSON.stringify(result), /demo-report|daily calorie target/i);
   assert.equal(JSON.parse(JSON.stringify(result)).status, "calculated");
 });
@@ -352,7 +352,7 @@ test("anthropometric fields belong to section 2 and not profile section 1", () =
 
 test("all five questionnaire goals are accepted and cannot change REE", () => {
   assert.deepEqual(QUESTIONNAIRE_GOALS, ["weight_loss", "maintenance", "muscle_gain", "performance_recovery", "habits_wellbeing"]);
-  const results = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal, dailyActivity: "moderate", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true }));
+  const results = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "adult", goal, dailyActivity: "mostly_sitting", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true }));
   assert.ok(results.every((result) => result.status === "calculated"));
   assert.ok(results.every((result) => result.ree.unroundedKcalPerDay === results[0].ree.unroundedKcalPerDay));
   assert.equal(Object.hasOwn(results[0], "deficit"), false, "weight_loss must not apply a deficit");
@@ -361,7 +361,90 @@ test("all five questionnaire goals are accepted and cannot change REE", () => {
 });
 
 test("questionnaire minor still receives no numeric result", () => {
-  const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "minor", guardianRole: "parent", goal: "maintenance", dailyActivity: "moderate", ageYears: 15, sexForFormula: "female", heightCm: 160, weightKg: 50, informationalConsent: true });
+  const result = runQuestionnairePipeline({ selections: [1, 0, 0, 3, 1, 0, 0, 0, 1], userType: "general_user", ageGroup: "minor", guardianRole: "parent", goal: "maintenance", dailyActivity: "mostly_sitting", ageYears: 15, sexForFormula: "female", heightCm: 160, weightKg: 50, informationalConsent: true });
   assert.equal(result.status, "minor_suppressed");
   assert.equal(Object.hasOwn(result, "ree"), false);
+});
+
+const questionnaire = (changes = {}) => ({ selections: [1,0,0,3,1,0,0,0,1], userType: "general_user", ageGroup: "adult", goal: "maintenance", dailyActivity: "mostly_sitting", ageYears: 30, sexForFormula: "female", heightCm: 170, weightKg: 65, informationalConsent: true, ...changes });
+const athleteQuestionnaire = (changes = {}) => questionnaire({ selections: [0,0,0,3,1,0,0,0,1], userType: "athlete", dailyActivity: undefined, sportType: "hockey", sportLevel: "professional", sessionsPerWeek: "5_6", typicalSessionMinutes: 90, doubleTrainingDays: false, sexForFormula: "male", ageYears: 28, heightCm: 189, weightKg: 86, goal: "performance_recovery", ...changes });
+
+test("Phase 2C1 exposes exactly four approved ordinary activities", () => {
+  assert.deepEqual(ORDINARY_ACTIVITIES, ["mostly_sitting", "lots_of_walking", "physically_active_work", "fitness_2_4_week"]);
+  assert.ok(ORDINARY_ACTIVITIES.every((x) => !["low", "moderate", "high"].includes(x)));
+});
+
+test("legacy ordinary activities fail closed without numeric output", () => {
+  for (const dailyActivity of ["low", "moderate", "high"]) {
+    const result = runQuestionnairePipeline(questionnaire({ dailyActivity }));
+    assert.equal(result.status, "invalid_input");
+    assert.ok(result.issues.some((x) => x.code === "QUESTIONNAIRE_UNSUPPORTED_LEGACY_ACTIVITY"));
+    for (const key of ["ree", "scenarios", "pal", "energyStart"]) assert.equal(Object.hasOwn(result, key), false);
+  }
+});
+
+test("ordinary PAL mappings and scenario order are exact", () => {
+  const expected = { mostly_sitting: [["typical_day",1.4]], lots_of_walking: [["typical_day",1.55]], physically_active_work: [["typical_day",1.7]], fitness_2_4_week: [["typical_day",1.5],["training",1.65]] };
+  for (const activity of ORDINARY_ACTIVITIES) {
+    const result = runQuestionnairePipeline(questionnaire({ dailyActivity: activity }));
+    assert.equal(result.status, "calculated");
+    assert.deepEqual(result.scenarios.map((x) => [x.id,x.palFinal]), expected[activity]);
+    assert.ok(result.scenarios.every((x) => x.durationModifier === 0 && x.id !== "double_training"));
+  }
+});
+
+test("athlete PAL levels, duration boundaries, and double warning are exact", () => {
+  assert.deepEqual([45,46,90,91].map(athleteDurationModifier), [-0.05,0,0,0.1]);
+  const expected = { amateur: [1.5,1.7,1.9], competitive: [1.55,1.85,2.1], professional: [1.6,2,2.25] };
+  for (const sportLevel of Object.keys(expected)) {
+    const scenarios = buildPalScenarios({ kind:"athlete", sportLevel, typicalSessionMinutes:90, dayType:"training", doubleTrainingDays:true });
+    assert.deepEqual(scenarios.map((x) => x.base), expected[sportLevel]);
+    assert.deepEqual(scenarios.map((x) => x.id), ["rest","training","double_training"]);
+    assert.equal(scenarios[2].modifier, 0);
+    assert.ok(scenarios[2].warnings.includes("double_duration_unknown"));
+  }
+  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ sportLevel:"amateur", typicalSessionMinutes:40 })).scenarios[1].palFinal, 1.65);
+  assert.equal(runQuestionnairePipeline(athleteQuestionnaire({ sportLevel:"competitive", typicalSessionMinutes:120 })).scenarios[1].palFinal, 1.95);
+});
+
+test("approved energy examples use unrounded REE and ties-to-even nearest 50", () => {
+  const professional = runQuestionnairePipeline(athleteQuestionnaire({ doubleTrainingDays:true }));
+  assert.equal(professional.status, "calculated");
+  assert.equal(professional.ree.unroundedKcalPerDay, 1906.25);
+  assert.equal(professional.scenarios[1].energyStartRawKcal, 3812.5);
+  assert.equal(professional.scenarios[1].energyStartKcal, 3800);
+  assert.equal(professional.scenarios[2].energyStartRawKcal, 4289.0625);
+  assert.equal(professional.scenarios[2].energyStartKcal, 4300);
+  assert.equal(roundToNearest50TiesToEven(3812.5), 3800);
+  assert.deepEqual(calculateEnergyStart(1906.25,2), { raw:3812.5, displayed:3800 });
+});
+
+test("PAL clamp and two decimal policy are deterministic", () => {
+  assert.equal(clampAndRoundPal(1.399), 1.4);
+  assert.equal(clampAndRoundPal(2.405), 2.4);
+  assert.equal(clampAndRoundPal(1.856), 1.86);
+});
+
+test("goal policy stays neutral for energy", () => {
+  const results = QUESTIONNAIRE_GOALS.map((goal) => runQuestionnairePipeline(questionnaire({ goal })));
+  assert.deepEqual(results.map((x) => x.scenarios.map((s) => s.energyStartKcal)), Array(5).fill(results[0].scenarios.map((s) => s.energyStartKcal)));
+  assert.ok(results.every((x) => x.appliedGoalMultiplier === 1));
+  assert.equal(results[0].goalStatus, "disabled_pending_safety_screen");
+  assert.equal(results[2].goalStatus, "deferred_to_goal_phase");
+});
+
+test("Phase 2C1 is deterministic and sessions frequency is context only", () => {
+  const first = runQuestionnairePipeline(athleteQuestionnaire({ sessionsPerWeek:"1_2" }));
+  const second = runQuestionnairePipeline(athleteQuestionnaire({ sessionsPerWeek:"7_plus" }));
+  assert.deepEqual(first.scenarios.map((x) => x.palFinal), second.scenarios.map((x) => x.palFinal));
+  assert.deepEqual(first, runQuestionnairePipeline(athleteQuestionnaire({ sessionsPerWeek:"1_2" })));
+  assert.ok(JSON.stringify(second.scenarios).includes("7_plus"));
+});
+
+test("Phase 2C1 non-calculated JSON has no numeric nutrition fields", () => {
+  const cases = [runQuestionnairePipeline(questionnaire({ ageGroup:"minor", ageYears:15, guardianRole:"parent" })), runQuestionnairePipeline(questionnaire({ selections:[1,0,0,2,1,0,0,0,1] })), runQuestionnairePipeline(questionnaire({ dailyActivity:undefined }))];
+  for (const result of cases) {
+    const serialized = JSON.parse(JSON.stringify(result));
+    for (const key of ["ree","scenarios","pal","energyStart","macros","protein","fat","carbohydrates"]) assert.equal(Object.hasOwn(serialized,key), false);
+  }
 });
