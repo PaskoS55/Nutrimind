@@ -101,6 +101,7 @@ export type CalculationIssueCode =
   | "REE_STAGE_MAPPING_DEFERRED"
   | "SOURCE_VALUE_PRESERVED"
   | "QUESTIONNAIRE_UNSUPPORTED_LEGACY_ACTIVITY"
+  | "QUESTIONNAIRE_UNSUPPORTED_MEAL_PATTERN_VALUE"
   | "PAL_INPUT_MISSING"
   | "PAL_INPUT_INVALID";
 
@@ -155,6 +156,7 @@ export type Phase2BResult =
 export const PHASE2C1_RESULT_SCHEMA_VERSION = "nutrimind.phase2c1.result.v1" as const;
 export const PHASE2C2_RESULT_SCHEMA_VERSION = "nutrimind.phase2c2.result.v1" as const;
 export const PHASE2D1_RESULT_SCHEMA_VERSION = "nutrimind.phase2d1.result.v1" as const;
+export const PHASE3A_RESULT_SCHEMA_VERSION = "nutrimind.phase3a.result.v1" as const;
 export type ScenarioId = "typical_day" | "rest" | "training" | "double_training";
 export type ScenarioLabelCode = "day.typical" | "day.rest" | "day.training" | "day.double_training";
 export type GoalStatus = "disabled_pending_safety_screen" | "deferred_to_goal_phase" | "neutral_in_phase2c1";
@@ -228,6 +230,36 @@ interface Phase2D1Base { status: Phase2BStatus; versions: CalculationVersions; s
 export type Phase2D1Result =
   | (Phase2D1Base & { status: "calculated"; phase2c2: Extract<Phase2C2Result, { status: "calculated" }>; hydrationInputContext: HydrationInputContext; baselineTotalWater: { source: "EFSA NDA Panel 2010"; sexBasis: "female" | "male"; totalWaterMl: 2000 | 2500; scope: "all_beverages_plus_food_water_per_day"; includesFoodWater: true; isIndividualRequirement: false }; exerciseFluidGuidance: ExerciseFluidGuidance; doubleSessionGuidance: { status: "not_applicable" | "second_duration_missing"; numericTotalAvailable: false }; warnings: HydrationWarningId[]; appliedPolicy: { policyId: "hydration.phase2d1.v1"; ruleIds: string[] }; calculationTrace: HydrationCalculationTrace[] })
   | (Phase2D1Base & { status: Exclude<Phase2BStatus, "calculated"> });
+
+export type CurrentMealPattern = "one_or_two" | "three" | "four_or_more" | "not_provided";
+export interface NormalizedMealContext { currentMealPattern: CurrentMealPattern }
+export type MealStructureId = "three_meals" | "three_meals_plus_snack" | "four_occasions";
+export interface MealStructureDescriptor {
+  id: MealStructureId;
+  label: string;
+  meals: { mealId: string; displayLabel: string; weight: number }[];
+  reconciliationMealId: string;
+}
+export interface Phase3AAppliedPolicy {
+  policyId: "meal.phase3a1.v1";
+  ruleIds: string[];
+}
+interface Phase3ABase {
+  schemaVersion: typeof PHASE3A_RESULT_SCHEMA_VERSION;
+  status: Phase2BStatus;
+  issues: CalculationIssue[];
+  nextStepCode: string;
+}
+export type Phase3AResult =
+  | (Phase3ABase & {
+      status: "calculated";
+      parent: Extract<Phase2D1Result, { status: "calculated" }>;
+      normalizedMealContext: NormalizedMealContext;
+      availableMealStructures: MealStructureDescriptor[];
+      appliedPolicy: Phase3AAppliedPolicy;
+      warnings: string[];
+    })
+  | (Phase3ABase & { status: Exclude<Phase2BStatus, "calculated"> });
 
 export interface CalculationAdmission {
   admitted: boolean;

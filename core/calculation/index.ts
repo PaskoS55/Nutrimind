@@ -15,3 +15,6 @@ export * from "./phase2c2.ts";
 export * from "./hydration-policy.ts";
 export * from "./phase2d1.ts";
 export * from "./result-schema.ts";
+export * from "./meal-policy.ts";
+export * from "./meal-allocation.ts";
+export * from "./phase3a.ts";

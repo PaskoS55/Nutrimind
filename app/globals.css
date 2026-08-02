@@ -1251,3 +1251,41 @@ a:focus-visible {
 .macro-trace dt,.macro-trace dd { min-width:0; overflow-wrap:normal; word-break:normal; }
 .rule-list { font-size:11px; overflow-wrap:anywhere; }
 @media(max-width:700px){.macro-grid,.hydration-grid{grid-template-columns:1fr}.macro-day{padding:16px}.macro-scenario h4{min-height:0}.result-shell{overflow-x:hidden}}
+
+/* Phase 3A1 meal structure */
+.meal-entry { margin-top:56px; padding:26px; border:1px solid var(--nm-border); border-radius:var(--nm-radius-md); background:var(--nm-elevated); }
+.meal-entry h2 { margin:8px 0 10px; font-size:30px; font-weight:400; }
+.meal-entry > p:not(.eyebrow) { max-width:640px; color:var(--nm-text-secondary); line-height:1.6; }
+.meal-entry .continue-button { display:inline-flex; margin-top:10px; }
+.meal-shell { width:min(1040px,calc(100% - 48px)); margin:0 auto; padding:72px 0 110px; overflow-x:hidden; }
+.meal-shell > h1 { margin:10px 0 16px; font-size:clamp(40px,6vw,68px); font-weight:360; line-height:1.03; letter-spacing:-.045em; }
+.meal-lead { max-width:720px; color:var(--nm-text-secondary); font-size:14px; line-height:1.7; }
+.meal-context { margin:28px 0; padding:20px; display:grid; grid-template-columns:1fr auto; gap:7px 24px; border-left:2px solid var(--nm-accent); background:rgba(32,42,34,.35); }
+.meal-context span { color:var(--nm-accent); font-weight:650; }
+.meal-context p { grid-column:1/-1; margin:0; color:var(--nm-text-secondary); font-size:11px; line-height:1.6; }
+.meal-selectors { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:30px 0 12px; }
+.meal-selectors label { min-width:0; display:grid; gap:9px; color:var(--nm-text-secondary); font-size:11px; }
+.meal-selectors select { width:100%; min-width:0; padding:14px; border:1px solid var(--nm-border); border-radius:10px; background:#101614; color:var(--nm-text); font:inherit; }
+.meal-selectors select:disabled { opacity:.58; }
+.meal-selector-note,.meal-empty { color:var(--nm-text-secondary); font-size:11px; line-height:1.6; }
+.meal-shell .continue-button:disabled { opacity:.45; cursor:not-allowed; }
+.meal-plan { margin-top:52px; }
+.meal-plan-heading { display:flex; justify-content:space-between; gap:24px; align-items:end; padding-bottom:20px; border-bottom:1px solid var(--nm-border); }
+.meal-plan-heading h2 { margin:5px 0 0; font-size:30px; font-weight:400; }
+.meal-plan-heading > strong { color:var(--nm-accent); font-size:11px; }
+.meal-card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:20px; }
+.meal-card { min-width:0; padding:21px; border:1px solid var(--nm-border); border-radius:var(--nm-radius-md); background:var(--nm-elevated); }
+.meal-card h3 { min-height:42px; margin:0 0 14px; font-size:16px; font-weight:500; }
+.meal-card dl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 12px; margin:0; font-size:11px; }
+.meal-card dd { margin:0; color:var(--nm-accent); white-space:nowrap; }
+.meal-total { margin-top:12px; padding:18px 21px; display:flex; flex-wrap:wrap; gap:12px 24px; align-items:center; border:1px solid var(--nm-border-strong); border-radius:var(--nm-radius-sm); }
+.meal-total strong { margin-right:auto; }
+.meal-total span { white-space:nowrap; }
+.meal-notices { margin-top:18px; color:var(--nm-text-secondary); font-size:11px; line-height:1.6; }
+.meal-notices p { margin:5px 0; }
+.meal-shell details { margin-top:24px; padding:21px; border:1px solid var(--nm-border); border-radius:var(--nm-radius-md); }
+.meal-shell summary { cursor:pointer; font-weight:650; }
+.meal-trace { display:grid; grid-template-columns:minmax(180px,.6fr) minmax(0,1.4fr); gap:9px 20px; margin-top:18px; font-size:11px; }
+.meal-trace dd { min-width:0; margin:0; overflow-wrap:anywhere; }
+.meal-shell.state-card { margin-top:72px; }
+@media(max-width:768px){.meal-shell{width:calc(100% - 32px);padding-top:48px}.meal-selectors{grid-template-columns:1fr}.meal-plan-heading{align-items:flex-start;flex-direction:column}.meal-card-grid{grid-template-columns:1fr}.meal-total{align-items:flex-start;flex-direction:column}.meal-total strong{margin-right:0}.meal-trace{grid-template-columns:1fr}.meal-card h3{min-height:0}}

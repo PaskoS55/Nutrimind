@@ -1,5 +1,7 @@
 import { MACRO_SCENARIO_IDS } from "./macro-policy.ts";
-import { PHASE2C2_RESULT_SCHEMA_VERSION, PHASE2D1_RESULT_SCHEMA_VERSION, type Phase2C2Result, type Phase2D1Result } from "./types.ts";
+import { MEAL_STRUCTURES } from "./meal-policy.ts";
+import { MEAL_PATTERN_VALUES } from "./phase3a.ts";
+import { PHASE2C2_RESULT_SCHEMA_VERSION, PHASE2D1_RESULT_SCHEMA_VERSION, PHASE3A_RESULT_SCHEMA_VERSION, type Phase2C2Result, type Phase2D1Result, type Phase3AResult } from "./types.ts";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const finiteNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value);
@@ -40,4 +42,21 @@ export function isCompatiblePhase2D1Payload(value: unknown): value is Phase2D1Re
     if (!["durationMinutes", "lowerMl", "upperMl"].every((key) => finiteNumber(exercise[key]))) return false;
   } else if (["durationMinutes", "lowerMl", "upperMl"].some((key) => Object.hasOwn(exercise, key))) return false;
   return isObject(doubleSession) && doubleSession.numericTotalAvailable === false && Array.isArray(value.warnings) && isObject(value.appliedPolicy) && Array.isArray(value.calculationTrace);
+}
+
+export function isCompatiblePhase3APayload(value: unknown): value is Phase3AResult {
+  if (!isObject(value) || value.schemaVersion !== PHASE3A_RESULT_SCHEMA_VERSION || !["calculated", ...nonCalculatedStatuses].includes(String(value.status))) return false;
+  if (value.status !== "calculated") return !Object.hasOwn(value, "parent") && !Object.hasOwn(value, "availableMealStructures") && !Object.hasOwn(value, "normalizedMealContext") && Array.isArray(value.issues) && typeof value.nextStepCode === "string";
+  if (!isCompatiblePhase2D1Payload(value.parent) || value.parent.status !== "calculated") return false;
+  if (!isObject(value.normalizedMealContext) || !MEAL_PATTERN_VALUES.includes(value.normalizedMealContext.currentMealPattern as typeof MEAL_PATTERN_VALUES[number])) return false;
+  if (!Array.isArray(value.availableMealStructures) || value.availableMealStructures.length !== MEAL_STRUCTURES.length) return false;
+  for (let index = 0; index < MEAL_STRUCTURES.length; index += 1) {
+    const expected = MEAL_STRUCTURES[index]; const actual = value.availableMealStructures[index];
+    if (!isObject(actual) || actual.id !== expected.id || actual.label !== expected.label || actual.reconciliationMealId !== expected.reconciliationMealId || !Array.isArray(actual.meals) || actual.meals.length !== expected.meals.length) return false;
+    for (let mealIndex = 0; mealIndex < expected.meals.length; mealIndex += 1) {
+      const meal = actual.meals[mealIndex]; const expectedMeal = expected.meals[mealIndex];
+      if (!isObject(meal) || meal.mealId !== expectedMeal.mealId || meal.displayLabel !== expectedMeal.displayLabel || meal.weight !== expectedMeal.weight) return false;
+    }
+  }
+  return isObject(value.appliedPolicy) && value.appliedPolicy.policyId === "meal.phase3a1.v1" && Array.isArray(value.appliedPolicy.ruleIds) && Array.isArray(value.warnings) && Array.isArray(value.issues) && typeof value.nextStepCode === "string";
 }

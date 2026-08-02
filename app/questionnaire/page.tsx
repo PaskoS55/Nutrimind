@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductHeader from "../components/ProductHeader";
-import { QUESTIONNAIRE_SECTION_TITLES, runQuestionnairePipeline, type OrdinaryActivity, type QuestionnaireGoal } from "../../core/index";
+import { QUESTIONNAIRE_SECTION_TITLES, normalizeCurrentMealPattern, runPhase3A, runQuestionnairePipeline, type OrdinaryActivity, type QuestionnaireGoal } from "../../core/index";
 
 type Option = { title: string; note?: string; value?: string };
 type Step = {
@@ -135,7 +135,9 @@ export default function Home() {
     const athlete = answers[0] === 0;
     const result = runQuestionnairePipeline({ selections: answers, userType: athlete ? "athlete" : "general_user", ageGroup: profile.ageGroup as "adult" | "minor", guardianRole: profile.guardianRole as "parent" | "legal_guardian" | "athlete_with_parent", goal, sportType: sport.sportType, sportLevel: sport.sportLevel as "professional" | "competitive" | "amateur", sessionsPerWeek: sport.sessionsPerWeek as "1_2" | "3_4" | "5_6" | "7_plus", typicalSessionMinutes: Number(sport.typicalSessionMinutes), doubleTrainingDays: sport.doubleTrainingDays, dailyActivity: sport.dailyActivity || undefined, ageYears: Number(profile.ageYears), sexForFormula: profile.sexForFormula as "female" | "male", heightCm: Number(profile.heightCm), weightKg: Number(profile.weightKg), informationalConsent: consent });
     if (result.status === "invalid_input") { setIssues(result.issues.filter((x) => x.severity === "error").map((x) => x.message)); setStep(1); return; }
+    const phase3a = runPhase3A(result, normalizeCurrentMealPattern(answers[4]));
     sessionStorage.setItem("nutrimind.phase2d1.result", JSON.stringify(result));
+    sessionStorage.setItem("nutrimind.phase3a.result", JSON.stringify(phase3a));
     router.push("/result");
   };
 
