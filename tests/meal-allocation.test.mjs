@@ -5,6 +5,10 @@ import {
   isCompatiblePhase3APayload, normalizeCurrentMealPattern, runPhase3A,
   runQuestionnairePipeline,
 } from "../core/index.ts";
+import { buildTrainingBoundaries } from "../core/meal-timing/boundaries.ts";
+import { isCompatiblePhase3A2Context, normalizeTrainingTimeContext } from "../core/meal-timing/context-schema.ts";
+import { isPhase3A2Eligible } from "../core/meal-timing/eligibility.ts";
+import { buildTrainingRelations } from "../core/meal-timing/relations.ts";
 
 const answers = (changes = {}) => ({
   selections: [1, 0, 0, 3, 1, 0, 0, 1, 1], userType: "general_user", ageGroup: "adult",
@@ -133,4 +137,71 @@ test("Phase3A runtime validator accepts exact schema and rejects old or malforme
 test("Phase3A contract contains no product supplement training-relative or journal fields", () => {
   const serialized = JSON.stringify(runPhase3A(parent(), normalizeCurrentMealPattern(1)));
   assert.doesNotMatch(serialized, /product|supplement|pre.?workout|post.?workout|relationToTraining|calibrationJournal|indexedDB/i);
+});
+
+test("Phase3A2 context maps exact production timing indices and missing values", () => {
+  assert.deepEqual([0, 1, 2].map(normalizeTrainingTimeContext), [
+    { schemaVersion: "nutrimind.phase3a2.context.v1", status: "available", trainingTimeContext: "morning", displayLabel: "утром" },
+    { schemaVersion: "nutrimind.phase3a2.context.v1", status: "available", trainingTimeContext: "daytime", displayLabel: "днём" },
+    { schemaVersion: "nutrimind.phase3a2.context.v1", status: "available", trainingTimeContext: "evening", displayLabel: "вечером" },
+  ]);
+  for (const value of [undefined, null, ""]) assert.deepEqual(normalizeTrainingTimeContext(value), { schemaVersion: "nutrimind.phase3a2.context.v1", status: "not_provided" });
+});
+
+test("unknown timing is isolated as unsupported and context is nutrition-free", () => {
+  const context = normalizeTrainingTimeContext(9);
+  assert.deepEqual(context, { schemaVersion: "nutrimind.phase3a2.context.v1", status: "unsupported", errorCode: "QUESTIONNAIRE_UNSUPPORTED_TRAINING_TIME_VALUE" });
+  assert.deepEqual(Object.keys(context).sort(), ["errorCode", "schemaVersion", "status"]);
+  const phase3a = runPhase3A(parent(), normalizeCurrentMealPattern(1));
+  assert.equal(phase3a.status, "calculated");
+});
+
+test("timing-context reader accepts exact schema and rejects old malformed or extra fields", () => {
+  const valid = normalizeTrainingTimeContext(0);
+  assert.equal(isCompatiblePhase3A2Context(valid), true);
+  assert.equal(isCompatiblePhase3A2Context({ ...valid, schemaVersion: "nutrimind.phase3a2.context.v0" }), false);
+  assert.equal(isCompatiblePhase3A2Context({ ...valid, energyKcal: 100 }), false);
+  assert.equal(isCompatiblePhase3A2Context({ ...valid, displayLabel: "morning" }), false);
+});
+
+test("all Phase3A1 structures generate only real adjacent boundaries", () => {
+  assert.deepEqual(MEAL_STRUCTURES.map((structure) => buildTrainingBoundaries(structure.meals).map((boundary) => boundary.position)), [[0,1,2,3],[0,1,2,3,4],[0,1,2,3,4]]);
+  const snack = buildTrainingBoundaries(MEAL_STRUCTURES[1].meals).map((boundary) => boundary.label);
+  assert.ok(snack.some((label) => label === "Тренировка между основным приёмом 2 и перекусом"));
+  assert.ok(snack.some((label) => label === "Тренировка между перекусом и основным приёмом 3"));
+});
+
+test("before first, adjacent, and after last relations are order-only", () => {
+  const meals = MEAL_STRUCTURES[0].meals;
+  assert.deepEqual(buildTrainingRelations(meals, "boundary_0"), { boundaryId: "boundary_0", markerPosition: 0, markerLabel: "Тренировка до первого приёма", meals: [
+    { mealId: "meal_1", label: "Следующий приём после тренировки" }, { mealId: "meal_2", label: "Обычный приём пищи" }, { mealId: "meal_3", label: "Обычный приём пищи" },
+  ] });
+  assert.deepEqual(buildTrainingRelations(meals, "boundary_1").meals.map((item) => item.label), ["Приём пищи перед тренировкой", "Следующий приём после тренировки", "Обычный приём пищи"]);
+  assert.deepEqual(buildTrainingRelations(meals, "boundary_3").meals.map((item) => item.label), ["Обычный приём пищи", "Обычный приём пищи", "Приём пищи перед тренировкой"]);
+  assert.equal(buildTrainingRelations(meals, "unknown"), null);
+});
+
+test("relation projection never mutates or reallocates Phase3A1 plan", () => {
+  for (const structure of MEAL_STRUCTURES) for (const scenarioId of ["lower", "central", "upper"]) {
+    const totals = scenarioId === "lower" ? { energyKcal: 1800, proteinG: 100, fatG: 60, carbohydrateG: 215 } : scenarioId === "central" ? { energyKcal: 2000, proteinG: 120, fatG: 70, carbohydrateG: 222.5 } : { energyKcal: 2200, proteinG: 140, fatG: 80, carbohydrateG: 230 };
+    const plan = allocateDailyMacros(totals, structure.id); const before = JSON.stringify(plan);
+    for (const boundary of buildTrainingBoundaries(plan.meals)) buildTrainingRelations(plan.meals, boundary.id);
+    assert.equal(JSON.stringify(plan), before);
+  }
+});
+
+test("Phase3A2 eligibility requires calculated single-training plan and available context", () => {
+  const available = normalizeTrainingTimeContext(0);
+  const base = { phase3aCalculated: true, planBuilt: true, dayId: "training", context: available };
+  assert.equal(isPhase3A2Eligible(base), true);
+  for (const change of [
+    { phase3aCalculated: false }, { planBuilt: false }, { dayId: "typical_day" }, { dayId: "rest" }, { dayId: "double_training" },
+    { context: normalizeTrainingTimeContext(undefined) }, { context: normalizeTrainingTimeContext(9) }, { context: { status: "malformed" } },
+  ]) assert.equal(isPhase3A2Eligible({ ...base, ...change }), false);
+});
+
+test("Phase3A2 policy has no hidden default, persistence, products, or timing math", () => {
+  assert.equal(buildTrainingRelations(MEAL_STRUCTURES[0].meals, ""), null);
+  const sources = [normalizeTrainingTimeContext.toString(), buildTrainingBoundaries.toString(), buildTrainingRelations.toString(), isPhase3A2Eligible.toString()].join("\n");
+  assert.doesNotMatch(sources, /sessionStorage|localStorage|indexedDB|fetch\(|analytics|product|kcal|protein|carbohydrate|duration|minute/i);
 });

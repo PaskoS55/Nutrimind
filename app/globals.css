@@ -1274,10 +1274,15 @@ a:focus-visible {
 .meal-plan-heading h2 { margin:5px 0 0; font-size:30px; font-weight:400; }
 .meal-plan-heading > strong { color:var(--nm-accent); font-size:11px; }
 .meal-card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:20px; }
+.meal-timing-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:20px; align-items:stretch; }
+.meal-timing-item { min-width:0; display:grid; gap:10px; }
+.meal-timing-item .meal-card { height:100%; }
 .meal-card { min-width:0; padding:21px; border:1px solid var(--nm-border); border-radius:var(--nm-radius-md); background:var(--nm-elevated); }
 .meal-card h3 { min-height:42px; margin:0 0 14px; font-size:16px; font-weight:500; }
 .meal-card dl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 12px; margin:0; font-size:11px; }
 .meal-card dd { margin:0; color:var(--nm-accent); white-space:nowrap; }
+.meal-relation { margin:-5px 0 14px; color:var(--nm-accent); font-size:11px; font-weight:650; line-height:1.5; }
+.training-marker { min-width:0; padding:11px 13px; border:1px dashed var(--nm-accent); border-radius:10px; color:var(--nm-accent); font-size:11px; line-height:1.45; text-align:center; overflow-wrap:normal; word-break:normal; }
 .meal-total { margin-top:12px; padding:18px 21px; display:flex; flex-wrap:wrap; gap:12px 24px; align-items:center; border:1px solid var(--nm-border-strong); border-radius:var(--nm-radius-sm); }
 .meal-total strong { margin-right:auto; }
 .meal-total span { white-space:nowrap; }
@@ -1288,4 +1293,18 @@ a:focus-visible {
 .meal-trace { display:grid; grid-template-columns:minmax(180px,.6fr) minmax(0,1.4fr); gap:9px 20px; margin-top:18px; font-size:11px; }
 .meal-trace dd { min-width:0; margin:0; overflow-wrap:anywhere; }
 .meal-shell.state-card { margin-top:72px; }
-@media(max-width:768px){.meal-shell{width:calc(100% - 32px);padding-top:48px}.meal-selectors{grid-template-columns:1fr}.meal-plan-heading{align-items:flex-start;flex-direction:column}.meal-card-grid{grid-template-columns:1fr}.meal-total{align-items:flex-start;flex-direction:column}.meal-total strong{margin-right:0}.meal-trace{grid-template-columns:1fr}.meal-card h3{min-height:0}}
+.meal-timing { margin-top:28px; padding:22px; border:1px solid var(--nm-border-strong); border-radius:var(--nm-radius-md); background:rgba(32,42,34,.35); }
+.meal-timing h3 { margin:0 0 10px; font-size:22px; font-weight:450; }
+.meal-timing > p { max-width:760px; color:var(--nm-text-secondary); font-size:12px; line-height:1.65; }
+.timing-context { display:grid; gap:5px; margin:18px 0; padding:15px; border-left:2px solid var(--nm-accent); }
+.timing-context strong { color:var(--nm-accent); }
+.timing-context span { color:var(--nm-text-secondary); font-size:11px; line-height:1.55; }
+.meal-timing fieldset { display:grid; gap:9px; margin:18px 0; padding:0; border:0; }
+.meal-timing legend { margin-bottom:10px; font-weight:650; }
+.timing-option { min-width:0; display:flex; gap:10px; align-items:flex-start; padding:12px; border:1px solid var(--nm-border); border-radius:10px; cursor:pointer; line-height:1.45; }
+.timing-option input { flex:0 0 auto; margin-top:3px; accent-color:var(--nm-accent); }
+.timing-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.timing-actions .back-button,.meal-timing > .continue-button { min-height:44px; }
+.timing-disclaimer,.timing-unavailable { margin-top:18px; padding:15px; border-left:2px solid var(--nm-accent); color:var(--nm-text-secondary); font-size:11px; line-height:1.6; }
+.timing-option:focus-within { outline:2px solid var(--nm-accent); outline-offset:2px; }
+@media(max-width:768px){.meal-shell{width:calc(100% - 32px);padding-top:48px}.meal-selectors{grid-template-columns:1fr}.meal-plan-heading{align-items:flex-start;flex-direction:column}.meal-card-grid,.meal-timing-grid{grid-template-columns:1fr}.meal-total{align-items:flex-start;flex-direction:column}.meal-total strong{margin-right:0}.meal-trace{grid-template-columns:1fr}.meal-card h3{min-height:0}.meal-timing{padding:17px}.timing-actions{align-items:stretch;flex-direction:column}.timing-actions button{width:100%}}

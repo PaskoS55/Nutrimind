@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductHeader from "../components/ProductHeader";
 import { QUESTIONNAIRE_SECTION_TITLES, normalizeCurrentMealPattern, runPhase3A, runQuestionnairePipeline, type OrdinaryActivity, type QuestionnaireGoal } from "../../core/index";
+import { normalizeTrainingTimeContext } from "../../core/meal-timing/context-schema";
+import { PHASE3A2_CONTEXT_STORAGE_KEY } from "../../core/meal-timing/types";
 
 type Option = { title: string; note?: string; value?: string };
 type Step = {
@@ -138,6 +140,7 @@ export default function Home() {
     const phase3a = runPhase3A(result, normalizeCurrentMealPattern(answers[4]));
     sessionStorage.setItem("nutrimind.phase2d1.result", JSON.stringify(result));
     sessionStorage.setItem("nutrimind.phase3a.result", JSON.stringify(phase3a));
+    sessionStorage.setItem(PHASE3A2_CONTEXT_STORAGE_KEY, JSON.stringify(normalizeTrainingTimeContext(answers[5])));
     router.push("/result");
   };
 
