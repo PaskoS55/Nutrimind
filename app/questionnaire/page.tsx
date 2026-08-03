@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductHeader from "../components/ProductHeader";
-import { QUESTIONNAIRE_SECTION_TITLES, normalizeCurrentMealPattern, runPhase3A, runQuestionnairePipeline, type OrdinaryActivity, type QuestionnaireGoal } from "../../core/index";
+import { ALLERGEN_TAXONOMY, PRESENTATION_GROUPS, RESTRICTION_STORAGE_KEY, isRestrictionContextV1, normalizeCurrentMealPattern, normalizeRestrictionContext, QUESTIONNAIRE_SECTION_TITLES, runPhase3A, runQuestionnairePipeline, type FoodAllergenCode, type OrdinaryActivity, type QuestionnaireGoal, type RawCeliacStatus, type RawDietaryPattern, type RawFoodAllergyStatus } from "../../core/index";
 import { normalizeTrainingTimeContext } from "../../core/meal-timing/context-schema";
 import { PHASE3A2_CONTEXT_STORAGE_KEY } from "../../core/meal-timing/types";
 
@@ -52,9 +52,7 @@ const steps: Step[] = [
     safety: "Выбранная цель не изменяет расчётный стартовый ориентир на этапе Phase 2C1. Автоматический дефицит или профицит не применяется; КБЖУ будет подключён позже.",
   },
   {
-    label: QUESTIONNAIRE_SECTION_TITLES[3], title: "Что нужно исключить в первую очередь?", intro: "Аллергии и медицинские ограничения проверяются до рейтинга продуктов.", question: "Ограничения", options: [
-      { title: "Аллергии" }, { title: "Непереносимости" }, { title: "Целиакия", note: "Строгий безглютеновый режим" }, { title: "Нет известных ограничений" },
-    ], safety: "Аллергены исключаются жёстко до подбора продуктов. При целиакии применяется строгий безглютеновый фильтр, а не обычное пищевое предпочтение.",
+    label: QUESTIONNAIRE_SECTION_TITLES[3], title: "Что нужно исключить в первую очередь?", intro: "Аллергии и медицинские ограничения проверяются до рейтинга продуктов.", question: "Безопасность", options: [], safety: "На этом этапе каталог продуктов ещё не реализован. Ответы сохраняются только в этой вкладке и не подтверждают диагноз или безопасность конкретного продукта.",
   },
   {
     label: QUESTIONNAIRE_SECTION_TITLES[4],
@@ -121,12 +119,16 @@ export default function Home() {
   const [profileAnnouncement, setProfileAnnouncement] = useState("");
   const [consent, setConsent] = useState(false);
   const [issues, setIssues] = useState<string[]>([]);
+  const [foodAllergyStatus, setFoodAllergyStatus] = useState<RawFoodAllergyStatus | "">("");
+  const [foodAllergenCodes, setFoodAllergenCodes] = useState<FoodAllergenCode[]>([]);
+  const [celiacStatus, setCeliacStatus] = useState<RawCeliacStatus | "">("");
+  const [dietaryPattern, setDietaryPattern] = useState<RawDietaryPattern | "">("");
   const current = steps[step];
   const select = (index: number) =>
     setAnswers((previous) =>
       previous.map((value, i) => (i === step ? index : value)),
     );
-  const fillDemo = () => { setAnswers([0, 0, 0, 3, 1, 2, 2, 1, 1]); setProfile({ ageGroup: "adult", guardianRole: "", ageYears: "28", sexForFormula: "male", heightCm: "189", weightKg: "86" }); setGoal("performance_recovery"); setSport({ sportType: "hockey", sportLevel: "professional", sessionsPerWeek: "5_6", typicalSessionMinutes: "90", doubleTrainingDays: false, dailyActivity: "" }); setConsent(true); };
+  const fillDemo = () => { setAnswers([0, 0, 0, 3, 1, 2, 2, 1, 1]); setProfile({ ageGroup: "adult", guardianRole: "", ageYears: "28", sexForFormula: "male", heightCm: "189", weightKg: "86" }); setGoal("performance_recovery"); setSport({ sportType: "hockey", sportLevel: "professional", sessionsPerWeek: "5_6", typicalSessionMinutes: "90", doubleTrainingDays: false, dailyActivity: "" }); setFoodAllergyStatus("none"); setFoodAllergenCodes([]); setCeliacStatus("no"); setDietaryPattern("omnivore"); setConsent(true); };
   const switchToAthlete = () => {
     setAnswers((previous) => previous.map((value, index) => index === 0 ? 0 : value));
     setSport((previous) => ({ ...previous, dailyActivity: "" }));
@@ -134,13 +136,26 @@ export default function Home() {
     setProfileAnnouncement("Выбран профиль «Спортсмен». Открыты вопросы спортивной ветки.");
   };
   const submit = () => {
+    sessionStorage.removeItem(RESTRICTION_STORAGE_KEY);
+    const restrictionContext = normalizeRestrictionContext({ foodAllergyStatus, foodAllergenCodes, celiacStatus, dietaryPattern });
+    if (!isRestrictionContextV1(restrictionContext) || ["not_provided", "unsupported", "malformed"].includes(restrictionContext.status)) {
+      const messages: string[] = [];
+      if (!foodAllergyStatus) messages.push("Выберите статус пищевой аллергии.");
+      if (foodAllergyStatus === "known" && foodAllergenCodes.length === 0) messages.push("Выберите хотя бы один пищевой аллерген.");
+      if (!celiacStatus) messages.push("Выберите ответ о целиакии.");
+      if (!dietaryPattern) messages.push("Выберите текущий тип питания.");
+      setIssues(messages.length ? messages : ["Проверьте ответы разделов «Безопасность» и «Текущее питание»."]);
+      setStep(!foodAllergyStatus || !celiacStatus || (foodAllergyStatus === "known" && foodAllergenCodes.length === 0) ? 3 : 4);
+      return;
+    }
     const athlete = answers[0] === 0;
-    const result = runQuestionnairePipeline({ selections: answers, userType: athlete ? "athlete" : "general_user", ageGroup: profile.ageGroup as "adult" | "minor", guardianRole: profile.guardianRole as "parent" | "legal_guardian" | "athlete_with_parent", goal, sportType: sport.sportType, sportLevel: sport.sportLevel as "professional" | "competitive" | "amateur", sessionsPerWeek: sport.sessionsPerWeek as "1_2" | "3_4" | "5_6" | "7_plus", typicalSessionMinutes: Number(sport.typicalSessionMinutes), doubleTrainingDays: sport.doubleTrainingDays, dailyActivity: sport.dailyActivity || undefined, ageYears: Number(profile.ageYears), sexForFormula: profile.sexForFormula as "female" | "male", heightCm: Number(profile.heightCm), weightKg: Number(profile.weightKg), informationalConsent: consent });
+    const result = runQuestionnairePipeline({ selections: answers, userType: athlete ? "athlete" : "general_user", ageGroup: profile.ageGroup as "adult" | "minor", guardianRole: profile.guardianRole as "parent" | "legal_guardian" | "athlete_with_parent", goal, sportType: sport.sportType, sportLevel: sport.sportLevel as "professional" | "competitive" | "amateur", sessionsPerWeek: sport.sessionsPerWeek as "1_2" | "3_4" | "5_6" | "7_plus", typicalSessionMinutes: Number(sport.typicalSessionMinutes), doubleTrainingDays: sport.doubleTrainingDays, dailyActivity: sport.dailyActivity || undefined, ageYears: Number(profile.ageYears), sexForFormula: profile.sexForFormula as "female" | "male", heightCm: Number(profile.heightCm), weightKg: Number(profile.weightKg), informationalConsent: consent, foodAllergyStatus: foodAllergyStatus as RawFoodAllergyStatus, foodAllergenCodes, celiacStatus: celiacStatus as RawCeliacStatus, dietaryPattern: dietaryPattern as RawDietaryPattern });
     if (result.status === "invalid_input") { setIssues(result.issues.filter((x) => x.severity === "error").map((x) => x.message)); setStep(1); return; }
     const phase3a = runPhase3A(result, normalizeCurrentMealPattern(answers[4]));
     sessionStorage.setItem("nutrimind.phase2d1.result", JSON.stringify(result));
     sessionStorage.setItem("nutrimind.phase3a.result", JSON.stringify(phase3a));
     sessionStorage.setItem(PHASE3A2_CONTEXT_STORAGE_KEY, JSON.stringify(normalizeTrainingTimeContext(answers[5])));
+    sessionStorage.setItem(RESTRICTION_STORAGE_KEY, JSON.stringify(restrictionContext));
     router.push("/result");
   };
 
@@ -207,7 +222,17 @@ export default function Home() {
             ["physically_active_work", "Физически активная работа", "Работа или повседневные дела включают продолжительную физическую активность."],
             ["fitness_2_4_week", "Фитнес 2–4 раза в неделю", "Регулярно тренируюсь, но не использую спортивную ветку анкеты."],
           ].map(([value, title, note]) => <button key={value} type="button" role="radio" aria-checked={sport.dailyActivity === value} className={`option-card ${sport.dailyActivity === value ? "selected" : ""}`} onClick={() => setSport({ ...sport, dailyActivity: value as OrdinaryActivity })}><span className="check">{sport.dailyActivity === value ? "✓" : "○"}</span><span><b>{title}</b><small>{note}</small></span></button>)}</div></fieldset><div className="routing-guidance">Тренируетесь 5 и более раз в неделю? Для более точного сценария выберите профиль «Спортсмен» — в нём доступен и любительский уровень.<button type="button" className="back-button" onClick={switchToAthlete}>Перейти к профилю «Спортсмен»</button></div></div>}</div>}
-          {step !== 1 && <fieldset className="answer-group">
+          {step === 3 && <div className="restriction-fields">
+            <fieldset className="answer-group"><legend>Есть ли пищевые аллергены, которые вам необходимо исключать? *</legend><div className="option-grid">{[
+              ["none", "Нет известных пищевых аллергий"], ["known", "Да, укажу аллергены"], ["other", "Другой аллерген"], ["not_sure", "Не уверен(а), какой именно"], ["prefer_not_to_say", "Предпочитаю не указывать"],
+            ].map(([value, title]) => <button type="button" role="radio" aria-checked={foodAllergyStatus === value} className={`option-card ${foodAllergyStatus === value ? "selected" : ""}`} onClick={() => { setFoodAllergyStatus(value as RawFoodAllergyStatus); if (value !== "known") setFoodAllergenCodes([]); }} key={value}><span className="check">{foodAllergyStatus === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div></fieldset>
+            {foodAllergyStatus === "known" && <fieldset className="allergen-picker"><legend>Какие пищевые аллергены вам необходимо исключать? Можно выбрать несколько. *</legend>{PRESENTATION_GROUPS.map((group) => <div className="allergen-group" key={group.id}><h3>{group.label}</h3>{group.allergenCodes.map((code) => { const entry = ALLERGEN_TAXONOMY.find((item) => item.code === code)!; return <label className="allergen-option" key={code}><input type="checkbox" checked={foodAllergenCodes.includes(code)} onChange={(event) => setFoodAllergenCodes((previous) => event.target.checked ? [...previous, code] : previous.filter((item) => item !== code))} /><span>{entry.label}</span></label>; })}</div>)}</fieldset>}
+            <fieldset className="answer-group"><legend>Указывали ли вам ранее, что у вас целиакия? *</legend><div className="option-grid">{[["no","Нет"],["confirmed","Да"],["not_sure","Не уверен(а)"],["prefer_not_to_say","Предпочитаю не указывать"]].map(([value,title]) => <button type="button" role="radio" aria-checked={celiacStatus === value} className={`option-card ${celiacStatus === value ? "selected" : ""}`} onClick={() => setCeliacStatus(value as RawCeliacStatus)} key={value}><span className="check">{celiacStatus === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div><p className="field-note">Ответ используется только для ограничения доступности примеров и не является подтверждением диагноза.</p></fieldset>
+          </div>}
+          {step === 4 && <div className="restriction-fields"><fieldset className="answer-group"><legend>Какой вариант лучше всего описывает ваш текущий тип питания? *</legend><div className="option-grid">{[
+            ["omnivore","Ем продукты растительного и животного происхождения"], ["vegetarian","Не ем мясо, птицу, рыбу и морепродукты; могу употреблять яйца и молочные продукты"], ["vegan","Не употребляю продукты животного происхождения"], ["pescatarian","Не ем мясо и птицу; употребляю рыбу или морепродукты"], ["other","Другой тип питания"], ["not_sure","Не уверен(а), какой вариант подходит"], ["prefer_not_to_say","Предпочитаю не указывать"],
+          ].map(([value,title]) => <button type="button" role="radio" aria-checked={dietaryPattern === value} className={`option-card ${dietaryPattern === value ? "selected" : ""}`} onClick={() => setDietaryPattern(value as RawDietaryPattern)} key={value}><span className="check">{dietaryPattern === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div><p className="field-note">Тип питания не является диагнозом и не подтверждает полноценность рациона.</p></fieldset><fieldset className="answer-group"><legend>{current.question} *</legend><div className="option-grid">{current.options.map((option, index) => <button type="button" role="radio" aria-checked={answers[step] === index} className={`option-card ${answers[step] === index ? "selected" : ""}`} onClick={() => select(index)} key={option.title}><span className="check">{answers[step] === index ? "✓" : "○"}</span><span><b>{option.title}</b>{option.note && <small>{option.note}</small>}</span></button>)}</div></fieldset></div>}
+          {step !== 1 && step !== 3 && step !== 4 && <fieldset className="answer-group">
             <legend>{current.question} *</legend>
             <div className="option-grid">
               {current.options.map((option, index) => (

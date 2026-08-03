@@ -1,5 +1,6 @@
 import { validateSurveyInput } from "./validation.ts";
 import { CALCULATION_CORE_VERSION, ORDINARY_ACTIVITIES, hydrationContext, runPhase2C2, runPhase2D1, type BeverageIntakeBand, type OrdinaryActivity, type Phase2D1Result } from "./calculation/index.ts";
+import type { FoodAllergenCode, RawCeliacStatus, RawDietaryPattern, RawFoodAllergyStatus } from "./food-restrictions/types.ts";
 
 export const QUESTIONNAIRE_SECTION_TITLES = [
   "Профиль", "Исходные данные", "Спорт и цель", "Безопасность", "Текущее питание",
@@ -18,12 +19,14 @@ export interface QuestionnaireAnswers {
   sessionsPerWeek?: "1_2" | "3_4" | "5_6" | "7_plus"; typicalSessionMinutes?: number;
   doubleTrainingDays?: boolean; dailyActivity?: OrdinaryActivity | "low" | "moderate" | "high";
   ageYears?: number; sexForFormula?: "female" | "male"; heightCm?: number; weightKg?: number; informationalConsent?: boolean;
+  foodAllergyStatus?: RawFoodAllergyStatus; foodAllergenCodes?: FoodAllergenCode[];
+  celiacStatus?: RawCeliacStatus; dietaryPattern?: RawDietaryPattern;
 }
 
 export function adaptQuestionnaireAnswers(raw: QuestionnaireAnswers) {
   const athlete = (raw.userType ?? (raw.selections[0] === 0 ? "athlete" : "general_user")) === "athlete";
   const ageGroup = raw.ageGroup ?? (typeof raw.ageYears === "number" && raw.ageYears < 18 ? "minor" : "adult");
-  const restriction = raw.selections[3];
+  const restriction = raw.celiacStatus === "confirmed" ? 2 : raw.foodAllergyStatus === "none" ? 3 : raw.foodAllergyStatus ? 0 : raw.selections[3];
   const input = {
     surveySpecVersion: "0.1.1-draft", userType: athlete ? "athlete" : "general_user", ageGroup,
     ageYears: raw.ageYears, sexForFormula: raw.sexForFormula, heightCm: raw.heightCm, weightKg: raw.weightKg,
