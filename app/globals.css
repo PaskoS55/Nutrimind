@@ -1277,6 +1277,16 @@ a:focus-visible {
 .meal-timing-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:20px; align-items:stretch; }
 .meal-timing-item { min-width:0; display:grid; gap:10px; }
 .meal-timing-item .meal-card { height:100%; }
+.food-template-intro { margin:20px 0; padding:18px; border:1px solid var(--nm-border-strong); border-radius:var(--nm-radius-md); background:rgba(32,42,34,.35); }
+.food-template-intro h3 { margin:0 0 10px; font-size:20px; font-weight:500; }
+.food-template-intro p { margin:8px 0; line-height:1.6; }
+.food-template-warning { color:var(--nm-text-secondary); }
+.food-template-details { margin-top:16px; border-top:1px solid var(--nm-border); }
+.food-template-details summary { min-height:44px; padding:12px 0; cursor:pointer; font-weight:650; line-height:1.4; }
+.food-template-details summary:focus-visible { outline:2px solid var(--nm-accent); outline-offset:3px; }
+.food-template-details p { margin:4px 0 12px; color:var(--nm-text-secondary); line-height:1.55; }
+.food-template-details ul { display:grid; gap:8px; margin:0; padding-left:20px; }
+.food-template-details li { overflow-wrap:break-word; }
 .meal-card { min-width:0; padding:21px; border:1px solid var(--nm-border); border-radius:var(--nm-radius-md); background:var(--nm-elevated); }
 .meal-card h3 { min-height:42px; margin:0 0 14px; font-size:16px; font-weight:500; }
 .meal-card dl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 12px; margin:0; font-size:11px; }

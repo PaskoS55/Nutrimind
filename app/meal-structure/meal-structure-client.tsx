@@ -8,6 +8,7 @@ import { isCompatiblePhase3A2Context } from "../../core/meal-timing/context-sche
 import { isPhase3A2Eligible } from "../../core/meal-timing/eligibility";
 import { buildTrainingRelations } from "../../core/meal-timing/relations";
 import { PHASE3A2_CONTEXT_STORAGE_KEY, type Phase3A2Context } from "../../core/meal-timing/types";
+import { getNeutralFoodGroupSlots } from "../../core/food-templates/neutral-slots";
 
 const dayLabels: Record<ScenarioId, string> = { typical_day: "Обычный день", rest: "День отдыха", training: "День с одной тренировкой", double_training: "День с двумя тренировками" };
 const scenarioLabels: Record<MacroScenarioId, string> = { lower: "Нижний расчётный сценарий", central: "Центральный расчётный сценарий", upper: "Верхний расчётный сценарий" };
@@ -63,6 +64,7 @@ export default function MealStructureClient() {
   const selectedStructure = result.availableMealStructures.find((structure) => structure.id === structureId);
   const boundaries = plan ? buildTrainingBoundaries(plan.meals) : [];
   const relationView = plan && appliedBoundaryId ? buildTrainingRelations(plan.meals, appliedBoundaryId) : null;
+  const neutralSlots = getNeutralFoodGroupSlots();
   const timingEligible = isPhase3A2Eligible({ phase3aCalculated: true, planBuilt: plan !== null, dayId: selectedDay?.id ?? "", context: timingContext });
   function buildPlan() {
     if (!selectedScenario || !structureId) return;
@@ -83,9 +85,16 @@ export default function MealStructureClient() {
     {!plan && <p className="meal-empty">План появится после трёх явных выборов.</p>}
     {plan && selectedDay && selectedScenario && selectedStructure && <section className="meal-plan" aria-live="polite">
       <div className="meal-plan-heading"><div><p className="eyebrow">{dayLabels[selectedDay.id]} · {scenarioLabels[selectedScenario.id]}</p><h2>{selectedStructure.label}</h2></div><strong>Суточные значения не изменены</strong></div>
+      <div className="food-template-intro">
+        <h3>Нейтральный конструктор категорий</h3>
+        <p>Под каждым приёмом можно открыть абстрактные категории для самостоятельной сборки. Это не список продуктов, не готовое меню и не точный подбор под КБЖУ.</p>
+        <p>Необязательно использовать все категории в каждом приёме.</p>
+        <p className="food-template-warning">Категория сама по себе не подтверждает отсутствие аллергена, глютена или риска перекрёстного контакта. При аллергии, целиакии или другом ограничении необходимо отдельно проверять состав, маркировку и условия приготовления конкретного продукта.</p>
+        <p><strong>Рассчитанные КБЖУ и расположение приёмов не изменены.</strong></p>
+      </div>
       <div className="meal-timing-grid">
         {relationView?.markerPosition === 0 && <div className="training-marker" role="note">{relationView.markerLabel}</div>}
-        {plan.meals.map((meal, index) => <div className="meal-timing-item" key={meal.mealId}><article className="meal-card"><h3>{meal.displayLabel}</h3>{relationView && <p className="meal-relation">{relationView.meals[index].label}</p>}<dl><dt>Энергия</dt><dd>{meal.energyKcal} ккал</dd><dt>Белки</dt><dd>{gram(meal.proteinG)} г</dd><dt>Жиры</dt><dd>{gram(meal.fatG)} г</dd><dt>Углеводы</dt><dd>{gram(meal.carbohydrateG)} г</dd></dl></article>{relationView?.markerPosition === index + 1 && <div className="training-marker" role="note">{relationView.markerLabel}</div>}</div>)}
+        {plan.meals.map((meal, index) => <div className="meal-timing-item" key={meal.mealId}><article className="meal-card"><h3>{meal.displayLabel}</h3>{relationView && <p className="meal-relation">{relationView.meals[index].label}</p>}<dl><dt>Энергия</dt><dd>{meal.energyKcal} ккал</dd><dt>Белки</dt><dd>{gram(meal.proteinG)} г</dd><dt>Жиры</dt><dd>{gram(meal.fatG)} г</dd><dt>Углеводы</dt><dd>{gram(meal.carbohydrateG)} г</dd></dl><details className="food-template-details"><summary>Категории для самостоятельной сборки</summary><p>Категории не определяют конкретный продукт, порцию или состав блюда.</p><ul>{neutralSlots.map((slot) => <li key={slot.id}>{slot.label}</li>)}</ul></details></article>{relationView?.markerPosition === index + 1 && <div className="training-marker" role="note">{relationView.markerLabel}</div>}</div>)}
       </div>
       <div className="meal-total"><strong>Итого за сутки</strong><span>{plan.totals.energyKcal} ккал</span><span>Б {gram(plan.totals.proteinG)} г</span><span>Ж {gram(plan.totals.fatG)} г</span><span>У {gram(plan.totals.carbohydrateG)} г</span></div>
       {timingEligible && timingContext.status === "available" && <section className="meal-timing" aria-labelledby="meal-timing-title">

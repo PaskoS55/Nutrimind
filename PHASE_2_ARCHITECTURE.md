@@ -252,3 +252,9 @@ The `/meal-structure` route requires explicit day, macro-scenario, and structure
 Phase 3A2 is an optional presentation layer over an already built Phase 3A1 plan. It supports only the existing athlete `training` day, only when the separate strict `nutrimind.phase3a2.context.v1` records one known coarse part of day. The production indices map exactly to `morning`, `daytime`, and `evening`; this context is displayed but never selects or restricts a boundary.
 
 The user explicitly opts in and selects before the first eating occasion, one of the real adjacent gaps, or after the last occasion. A pure non-nutrition view model adds order-only relation labels without mutating, rebuilding, persisting, or reallocating the Phase 3A1 plan. The boundary exists only in React state and resets on plan inputs, plan rebuild, reset, or reload. Rest, ordinary `typical_day`, double-training, missing/unsupported context, malformed sessions, and non-calculated states receive no controls. The existing `nutrimind.phase3a.result.v1`, calculation trace, allocation weights, rounding, reconciliation, daily totals, hydration and calibration remain unchanged. Phase 3B food selection remains unimplemented.
+
+## 17. Implemented Phase 3B1 boundary
+
+Phase 3B1 is a schema-less pure presentation module outside nutrition calculation. It exposes exactly four equal-status abstract slots: `protein_source`, `carbohydrate_source`, `vegetables_fruit_berries`, and `fat_source`. The same immutable set appears in a closed native disclosure under every existing meal card only after a calculated Phase 3A1 plan exists.
+
+It contains no products, portions, composition data, restriction filtering, macro matching, timing derivation, persistence, transport, or medical interpretation. Phase 3A1 numbers and Phase 3A2 relations remain unchanged. Concrete-food hard exclusions are not implemented and require a separately approved Phase 3B2 boundary.
