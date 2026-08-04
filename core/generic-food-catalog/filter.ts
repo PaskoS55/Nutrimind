@@ -1,0 +1,14 @@
+import type { RestrictionContextV1 } from "../food-restrictions/types.ts";
+import { isRestrictionContextV1 } from "../food-restrictions/context-schema.ts";
+import * as T from "./types.ts";
+import { deepFreeze } from "./validator.ts";
+const order=<X extends string>(v:X[],o:readonly X[])=>[...new Set(v)].sort((a,b)=>o.indexOf(a)-o.indexOf(b));
+export function filterGenericFoodCatalog(catalog:T.GenericCatalogValidationResult,capability:T.GenericExampleCapabilityResultV1,context:RestrictionContextV1,slot:string):T.GenericFilterResultV1{
+ const finish=(status:T.GenericFilterResultV1["status"],items:T.GenericFoodEntityV1[]=[],exclusions:T.GenericFilterResultV1["exclusions"]=[],warnings:T.GenericWarningCode[]=[],errors:T.GenericErrorCode[]=[])=>deepFreeze({status,items:[...items],exclusions:[...exclusions],warningCodes:order(warnings,T.GENERIC_WARNING_CODES),errorCodes:order(errors,T.GENERIC_ERROR_CODES),ruleIds:[...T.GENERIC_RULE_IDS]});
+ if(!T.GENERIC_SLOTS.includes(slot as never))return finish("slot_unsupported",[],[],[],["GENERIC_FILTER_SLOT_UNSUPPORTED"]);
+ if(!isRestrictionContextV1(context)||context.status!=="resolved"||context.foodAllergyStatus!=="none"||context.foodAllergenCodes.length||context.celiacStatus!=="no"||!T.GENERIC_PATTERNS.includes(context.dietaryPattern as never))return finish("context_unavailable",[],[],["GENERIC_PHASE3B1_FALLBACK"],["GENERIC_FILTER_CONTEXT_UNAVAILABLE"]);
+ if(capability.status!=="generic_examples_available"||catalog.status!=="valid")return finish("catalog_unavailable",[],[],["GENERIC_PHASE3B1_FALLBACK"],["GENERIC_FILTER_CATALOG_UNAVAILABLE"]);
+ const profiles=new Map(catalog.catalog.intrinsicProfiles.map(p=>[p.intrinsicProfileId,p]));const items:T.GenericFoodEntityV1[]=[];const exclusions:T.GenericFilterResultV1["exclusions"]=[];
+ for(const entity of catalog.catalog.entities){if(entity.primarySlotCode!==slot&&!entity.additionalSlotCodes.includes(slot as never))continue;const p=profiles.get(entity.intrinsicProfileRef.intrinsicProfileId)!;const pattern=p.dietaryPatternAssessments.find(x=>x.pattern===context.dietaryPattern);if(entity.lifecycleStatus!=="active")exclusions.push({foodId:entity.foodId,errorCodes:["GENERIC_FILTER_ENTITY_EXCLUDED_LIFECYCLE"]});else if(!pattern||pattern.status!=="compatible")exclusions.push({foodId:entity.foodId,errorCodes:["GENERIC_FILTER_ENTITY_EXCLUDED_PATTERN"]});else items.push(entity)}
+ items.sort((a,b)=>a.displayOrder-b.displayOrder||a.foodId.localeCompare(b.foodId));exclusions.sort((a,b)=>a.foodId.localeCompare(b.foodId));if(!items.length)return finish("empty",[],exclusions,[...(exclusions.length?["GENERIC_FILTER_ITEMS_EXCLUDED" as const]:[]),"GENERIC_FILTER_NO_MATCHES"],["GENERIC_FILTER_NO_MATCHES"]);return finish("matched",items,exclusions,exclusions.length?["GENERIC_FILTER_ITEMS_EXCLUDED"]:[],[]);
+}
