@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   ALLERGEN_CODES, ALLERGEN_TAXONOMY, ALLERGEN_TAXONOMY_VERSION,
   CATALOG_COVERAGE_VERSION, CATALOG_SUPPORTED_ALLERGEN_CODES, ERROR_CODES,
   MARKET_VERSION, PRESENTATION_GROUPS, RESTRICTION_SCHEMA_VERSION,
   RESTRICTION_STORAGE_KEY, RULE_IDS, WARNING_CODES, getRestrictionCapability,
   isRestrictionContextV1, normalizeRestrictionContext, parseRestrictionContextJson,
-  warningsForStatus,
+  warningsForStatus, KNOWN_ALLERGEN_VALIDATION_MESSAGE,
+  changeQuestionnaireAllergyStatus, validateQuestionnaireAllergenSelection,
 } from "../core/food-restrictions/index.ts";
 
 const resolvedRaw = { foodAllergyStatus: "none", foodAllergenCodes: [], celiacStatus: "no", dietaryPattern: "omnivore" };
@@ -17,8 +19,56 @@ test("uses exact Russian market, taxonomy, schema and empty coverage versions", 
   assert.equal(CATALOG_COVERAGE_VERSION, "nutrimind.catalog-coverage.none.v1");
   assert.equal(RESTRICTION_SCHEMA_VERSION, "nutrimind.phase3b2.restriction-context.v1");
   assert.equal(RESTRICTION_STORAGE_KEY, RESTRICTION_SCHEMA_VERSION);
+  assert.equal(RESTRICTION_STORAGE_KEY, "nutrimind.phase3b2.restriction-context.v1");
   assert.deepEqual(CATALOG_SUPPORTED_ALLERGEN_CODES, []);
   assert.equal(getRestrictionCapability(), "abstract_only");
+});
+
+test("questionnaire known-allergy validation is exact and blocks an empty set", () => {
+  assert.equal(KNOWN_ALLERGEN_VALIDATION_MESSAGE, "Выберите хотя бы один аллерген из списка или измените ответ");
+  assert.equal(validateQuestionnaireAllergenSelection("known", []), KNOWN_ALLERGEN_VALIDATION_MESSAGE);
+  assert.equal(validateQuestionnaireAllergenSelection("known", ["wheat"]), null);
+  assert.equal(validateQuestionnaireAllergenSelection("known", ["wheat", "peanuts"]), null);
+  assert.equal(validateQuestionnaireAllergenSelection("known", ["wheat"]), null);
+  assert.equal(validateQuestionnaireAllergenSelection("known", []), KNOWN_ALLERGEN_VALIDATION_MESSAGE, "removing the final code restores the error");
+});
+
+test("questionnaire status changes clear stale codes and validation", () => {
+  for (const status of ["none", "other", "not_sure", "prefer_not_to_say"]) {
+    assert.deepEqual(changeQuestionnaireAllergyStatus(status, ["wheat", "peanuts"]), {
+      foodAllergyStatus: status,
+      foodAllergenCodes: [],
+      validationMessage: null,
+    });
+    assert.equal(validateQuestionnaireAllergenSelection(status, []), null);
+  }
+  assert.deepEqual(changeQuestionnaireAllergyStatus("known", ["wheat"]), {
+    foodAllergyStatus: "known",
+    foodAllergenCodes: ["wheat"],
+    validationMessage: null,
+  });
+});
+
+test("production questionnaire wires section and submit blocking to accessible exact validation", () => {
+  const source = readFileSync(new URL("../app/questionnaire/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /if \(nextStep > 3 && !canLeaveRestrictionStep\(\)\)/);
+  assert.match(source, /setStep\(3\);\s+return/);
+  assert.match(source, /onClick=\{\(\) => goToStep\(Math\.min\(8, step \+ 1\)\)\}/);
+  assert.match(source, /messages\.push\(KNOWN_ALLERGEN_VALIDATION_MESSAGE\)/);
+  assert.match(source, /aria-describedby=\{allergenValidationError \? "allergen-validation-error" : undefined\}/);
+  assert.match(source, /id="allergen-validation-error" className="field-error" role="alert"/);
+  assert.match(source, /allergenFieldsetRef\.current\?\.focus\(\)/);
+});
+
+test("only the approved versioned restriction storage key is used", () => {
+  const sources = [
+    "../core/food-restrictions/types.ts",
+    "../app/questionnaire/page.tsx",
+  ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+  assert.doesNotMatch(sources, /["']nutrimind\.phase3b2\.restriction-context["']/);
+  assert.match(sources, /nutrimind\.phase3b2\.restriction-context\.v1/);
+  assert.match(sources, /sessionStorage\.removeItem\(RESTRICTION_STORAGE_KEY\)/);
+  assert.match(sources, /sessionStorage\.setItem\(RESTRICTION_STORAGE_KEY/);
 });
 
 test("presentation groups have exact ids, order, labels and membership", () => {

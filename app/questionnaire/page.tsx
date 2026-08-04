@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ProductHeader from "../components/ProductHeader";
-import { ALLERGEN_TAXONOMY, PRESENTATION_GROUPS, RESTRICTION_STORAGE_KEY, isRestrictionContextV1, normalizeCurrentMealPattern, normalizeRestrictionContext, QUESTIONNAIRE_SECTION_TITLES, runPhase3A, runQuestionnairePipeline, type FoodAllergenCode, type OrdinaryActivity, type QuestionnaireGoal, type RawCeliacStatus, type RawDietaryPattern, type RawFoodAllergyStatus } from "../../core/index";
+import { ALLERGEN_TAXONOMY, KNOWN_ALLERGEN_VALIDATION_MESSAGE, PRESENTATION_GROUPS, RESTRICTION_STORAGE_KEY, changeQuestionnaireAllergyStatus, isRestrictionContextV1, normalizeCurrentMealPattern, normalizeRestrictionContext, QUESTIONNAIRE_SECTION_TITLES, runPhase3A, runQuestionnairePipeline, validateQuestionnaireAllergenSelection, type FoodAllergenCode, type OrdinaryActivity, type QuestionnaireGoal, type RawCeliacStatus, type RawDietaryPattern, type RawFoodAllergyStatus } from "../../core/index";
 import { normalizeTrainingTimeContext } from "../../core/meal-timing/context-schema";
 import { PHASE3A2_CONTEXT_STORAGE_KEY } from "../../core/meal-timing/types";
 
@@ -121,9 +121,30 @@ export default function Home() {
   const [issues, setIssues] = useState<string[]>([]);
   const [foodAllergyStatus, setFoodAllergyStatus] = useState<RawFoodAllergyStatus | "">("");
   const [foodAllergenCodes, setFoodAllergenCodes] = useState<FoodAllergenCode[]>([]);
+  const [allergenValidationError, setAllergenValidationError] = useState<string | null>(null);
+  const allergenFieldsetRef = useRef<HTMLFieldSetElement>(null);
   const [celiacStatus, setCeliacStatus] = useState<RawCeliacStatus | "">("");
   const [dietaryPattern, setDietaryPattern] = useState<RawDietaryPattern | "">("");
   const current = steps[step];
+  const setAllergenValidation = (message: string | null) => {
+    setAllergenValidationError(message);
+    if (message === null) setIssues((previous) => previous.filter((item) => item !== KNOWN_ALLERGEN_VALIDATION_MESSAGE));
+  };
+  useEffect(() => {
+    if (step === 3 && allergenValidationError) allergenFieldsetRef.current?.focus();
+  }, [allergenValidationError, step]);
+  const canLeaveRestrictionStep = () => {
+    const message = validateQuestionnaireAllergenSelection(foodAllergyStatus, foodAllergenCodes);
+    setAllergenValidation(message);
+    return message === null;
+  };
+  const goToStep = (nextStep: number) => {
+    if (nextStep > 3 && !canLeaveRestrictionStep()) {
+      setStep(3);
+      return;
+    }
+    setStep(nextStep);
+  };
   const select = (index: number) =>
     setAnswers((previous) =>
       previous.map((value, i) => (i === step ? index : value)),
@@ -141,7 +162,10 @@ export default function Home() {
     if (!isRestrictionContextV1(restrictionContext) || ["not_provided", "unsupported", "malformed"].includes(restrictionContext.status)) {
       const messages: string[] = [];
       if (!foodAllergyStatus) messages.push("Выберите статус пищевой аллергии.");
-      if (foodAllergyStatus === "known" && foodAllergenCodes.length === 0) messages.push("Выберите хотя бы один пищевой аллерген.");
+      if (foodAllergyStatus === "known" && foodAllergenCodes.length === 0) {
+        messages.push(KNOWN_ALLERGEN_VALIDATION_MESSAGE);
+        setAllergenValidationError(KNOWN_ALLERGEN_VALIDATION_MESSAGE);
+      }
       if (!celiacStatus) messages.push("Выберите ответ о целиакии.");
       if (!dietaryPattern) messages.push("Выберите текущий тип питания.");
       setIssues(messages.length ? messages : ["Проверьте ответы разделов «Безопасность» и «Текущее питание»."]);
@@ -181,7 +205,7 @@ export default function Home() {
             <button
               key={item.label}
               className={index === step ? "active" : ""}
-              onClick={() => setStep(index)}
+              onClick={() => goToStep(index)}
               aria-current={index === step ? "step" : undefined}
             >
               <span>{String(index + 1).padStart(2, "0")}</span>
@@ -225,8 +249,8 @@ export default function Home() {
           {step === 3 && <div className="restriction-fields">
             <fieldset className="answer-group"><legend>Есть ли пищевые аллергены, которые вам необходимо исключать? *</legend><div className="option-grid">{[
               ["none", "Нет известных пищевых аллергий"], ["known", "Да, укажу аллергены"], ["other", "Другой аллерген"], ["not_sure", "Не уверен(а), какой именно"], ["prefer_not_to_say", "Предпочитаю не указывать"],
-            ].map(([value, title]) => <button type="button" role="radio" aria-checked={foodAllergyStatus === value} className={`option-card ${foodAllergyStatus === value ? "selected" : ""}`} onClick={() => { setFoodAllergyStatus(value as RawFoodAllergyStatus); if (value !== "known") setFoodAllergenCodes([]); }} key={value}><span className="check">{foodAllergyStatus === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div></fieldset>
-            {foodAllergyStatus === "known" && <fieldset className="allergen-picker"><legend>Какие пищевые аллергены вам необходимо исключать? Можно выбрать несколько. *</legend>{PRESENTATION_GROUPS.map((group) => <div className="allergen-group" key={group.id}><h3>{group.label}</h3>{group.allergenCodes.map((code) => { const entry = ALLERGEN_TAXONOMY.find((item) => item.code === code)!; return <label className="allergen-option" key={code}><input type="checkbox" checked={foodAllergenCodes.includes(code)} onChange={(event) => setFoodAllergenCodes((previous) => event.target.checked ? [...previous, code] : previous.filter((item) => item !== code))} /><span>{entry.label}</span></label>; })}</div>)}</fieldset>}
+            ].map(([value, title]) => <button type="button" role="radio" aria-checked={foodAllergyStatus === value} className={`option-card ${foodAllergyStatus === value ? "selected" : ""}`} onClick={() => { const next = changeQuestionnaireAllergyStatus(value as RawFoodAllergyStatus, foodAllergenCodes); setFoodAllergyStatus(next.foodAllergyStatus); setFoodAllergenCodes(next.foodAllergenCodes); setAllergenValidation(next.validationMessage); }} key={value}><span className="check">{foodAllergyStatus === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div></fieldset>
+            {foodAllergyStatus === "known" && <fieldset ref={allergenFieldsetRef} tabIndex={-1} className="allergen-picker" aria-invalid={allergenValidationError ? "true" : undefined} aria-describedby={allergenValidationError ? "allergen-validation-error" : undefined}><legend>Какие пищевые аллергены вам необходимо исключать? Можно выбрать несколько. *</legend>{PRESENTATION_GROUPS.map((group) => <div className="allergen-group" key={group.id}><h3>{group.label}</h3>{group.allergenCodes.map((code) => { const entry = ALLERGEN_TAXONOMY.find((item) => item.code === code)!; return <label className="allergen-option" key={code}><input type="checkbox" checked={foodAllergenCodes.includes(code)} onChange={(event) => setFoodAllergenCodes((previous) => { const next = event.target.checked ? [...previous, code] : previous.filter((item) => item !== code); setAllergenValidation(validateQuestionnaireAllergenSelection("known", next)); return next; })} /><span>{entry.label}</span></label>; })}</div>)}{allergenValidationError && <p id="allergen-validation-error" className="field-error" role="alert">{allergenValidationError}</p>}</fieldset>}
             <fieldset className="answer-group"><legend>Указывали ли вам ранее, что у вас целиакия? *</legend><div className="option-grid">{[["no","Нет"],["confirmed","Да"],["not_sure","Не уверен(а)"],["prefer_not_to_say","Предпочитаю не указывать"]].map(([value,title]) => <button type="button" role="radio" aria-checked={celiacStatus === value} className={`option-card ${celiacStatus === value ? "selected" : ""}`} onClick={() => setCeliacStatus(value as RawCeliacStatus)} key={value}><span className="check">{celiacStatus === value ? "✓" : "○"}</span><b>{title}</b></button>)}</div><p className="field-note">Ответ используется только для ограничения доступности примеров и не является подтверждением диагноза.</p></fieldset>
           </div>}
           {step === 4 && <div className="restriction-fields"><fieldset className="answer-group"><legend>Какой вариант лучше всего описывает ваш текущий тип питания? *</legend><div className="option-grid">{[
@@ -272,7 +296,7 @@ export default function Home() {
             {step < 8 ? (
               <button
                 className="continue-button"
-                onClick={() => setStep((value) => Math.min(8, value + 1))}
+                onClick={() => goToStep(Math.min(8, step + 1))}
               >
                 Продолжить →
               </button>

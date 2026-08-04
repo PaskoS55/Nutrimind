@@ -67,13 +67,25 @@ Synthetic explicit-none, single/multiple allergy, wheat, oats, other gluten cere
 
 ## Verification
 
-- automated suite: `195 passed / 0 failed / 0 skipped`;
-- existing 163 tests remain included and passing;
+- automated suite after closure patch: `199 passed / 0 failed / 0 skipped`;
+- all existing 195 tests remain included and passing;
 - TypeScript typecheck: passed;
 - Next.js production build: compiled, typechecked and generated all routes;
 - diff whitespace check: recorded in final handoff;
 - local browser QA: recorded in final handoff;
 - production QA: performed after deployment and recorded in the final handoff because production necessarily follows the single commit.
+
+## Production deployment verification chronology
+
+1. After the initial push, the canonical routes returned HTTP 200.
+2. The first ten-minute check incorrectly suspected an old artifact because the `/questionnaire` ETag did not change and the initial server HTML does not contain the conditionally client-rendered fields from sections 4 and 5.
+3. Subsequent Vercel metadata verification established that the deployment was READY, targeted production, carried commit metadata for `b1e886ad9635f81a2676d80c626ae80ca7701bc5`, and already served the canonical alias. No redeployment was needed and the alias was not switched manually.
+4. Interactive QA on the canonical production UI confirmed the new Phase 3B2A allergy, celiac and dietary-pattern fields.
+5. The ETag is therefore not used as independent proof of version identity for this client-rendered flow. There was no deployment failure; the initial diagnosis was corrected after interactive and metadata verification.
+
+## Production QA limitation and closure follow-up
+
+Malformed and old-session behavior was fully covered by deterministic parser tests. The initial production QA did not inject values directly into `sessionStorage`; it did interactively verify the primary synthetic production flow. The closure QA result must remain explicit: the browser automation environment prohibits direct session-store inspection or mutation, so the automated regression suite remains the canonical verification of malformed and old-session parser behavior. No debug route, test-only production code or weakened browser boundary was added.
 
 ## Boundary
 

@@ -2,7 +2,7 @@
 
 ## Phase 3B2A — Russian-market restriction context
 
-Phase 3B2A adds a separate, calculation-independent context under `nutrimind.phase3b2.restriction-context.v1`. It uses market discriminator `nutrimind.market.ru.v1`, taxonomy `nutrimind.food-allergen.ru.v1`, and empty coverage `nutrimind.catalog-coverage.none.v1`. The questionnaire retains nine sections: exact allergy/celiac fields are inside section 4 and dietary pattern is inside section 5.
+Phase 3B2A adds a separate, calculation-independent context. Its exact `sessionStorage` key is `nutrimind.phase3b2.restriction-context.v1`, and its schema version is also `nutrimind.phase3b2.restriction-context.v1`; these remain distinct concepts that intentionally share one string in v1. No unversioned fallback key, dual-read path or migration exists. It uses market discriminator `nutrimind.market.ru.v1`, taxonomy `nutrimind.food-allergen.ru.v1`, and empty coverage `nutrimind.catalog-coverage.none.v1`. The questionnaire retains nine sections: exact allergy/celiac fields are inside section 4 and dietary pattern is inside section 5.
 
 The context is written to `sessionStorage` only after explicit validated submission and is cleared before every new attempt. It contains only stable domain codes, versions, status, `abstract_only` capability, warning/error codes and policy IDs. It does not extend Phase2D1, Phase3A or Phase3A2; does not contain nutrition, raw medical answers, presentation metadata, EAEU mapping IDs, free text or products. Old, missing, neutral-union and malformed contexts fail closed only for the future concrete layer. Phase3A and Phase3B1 remain governed by their existing parent contracts.
 
