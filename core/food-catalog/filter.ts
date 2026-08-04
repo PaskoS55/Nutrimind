@@ -1,0 +1,13 @@
+import type { RestrictionContextV1 } from "../food-restrictions/types.ts";
+import { CATALOG_ERROR_CODES, CATALOG_RULE_IDS, CATALOG_WARNING_CODES, SLOT_CODES, type CatalogCapabilityResult, type CatalogErrorCode, type CatalogFilterResult, type CatalogValidationResult } from "./types.ts";
+import { deepFreeze } from "./validator.ts";
+const order=<T extends string>(v:T[],o:readonly T[])=>[...new Set(v)].sort((a,b)=>o.indexOf(a)-o.indexOf(b));
+export function filterCatalog(catalog:CatalogValidationResult,capability:CatalogCapabilityResult,context:RestrictionContextV1,slot:string):CatalogFilterResult{
+ const base={ruleIds:[...CATALOG_RULE_IDS]};const finish=(status:CatalogFilterResult["status"],items:CatalogFilterResult["items"]=[],exclusions:CatalogFilterResult["exclusions"]=[],warnings:CatalogFilterResult["warningCodes"]=[],errors:CatalogFilterResult["errorCodes"]=[])=>deepFreeze({status,items:[...items],exclusions:[...exclusions],warningCodes:order([...warnings],CATALOG_WARNING_CODES),errorCodes:order([...errors],CATALOG_ERROR_CODES),...base});
+ if(!SLOT_CODES.includes(slot as never))return finish("slot_unsupported",[],[],[],["FILTER_SLOT_UNSUPPORTED"]);
+ if(context.status!=="resolved")return finish("context_unavailable",[],[],[],["CAPABILITY_CONTEXT_UNAVAILABLE"]);
+ if(capability.status!=="concrete_available"||catalog.status!=="valid")return finish("catalog_unavailable",[],[],[],["CAPABILITY_CATALOG_UNAVAILABLE"]);
+ const profiles=new Map(catalog.catalog.safetyProfiles.map(p=>[p.safetyProfileId,p]));const items=[];const exclusions=[];
+ for(const entity of catalog.catalog.entities){if(!entity.slotCodes.includes(slot as never))continue;const p=profiles.get(entity.safetyProfileRef.safetyProfileId)!;const codes:CatalogErrorCode[]=[];for(const userCode of context.foodAllergenCodes){const a=p.allergenAssessments.find(x=>x.code===userCode)!;if(a.ingredientStatus!=="does_not_contain")codes.push("FILTER_ENTITY_EXCLUDED_ALLERGEN");if(!["not_applicable","assessed_no_known_warning"].includes(a.crossContactStatus))codes.push("FILTER_ENTITY_EXCLUDED_CROSS_CONTACT")}const pattern=p.dietaryPatternAssessments.find(x=>x.pattern===context.dietaryPattern);if(!pattern||pattern.status!=="compatible")codes.push("FILTER_ENTITY_EXCLUDED_PATTERN");if(codes.length)exclusions.push({foodId:entity.foodId,errorCodes:order(codes,CATALOG_ERROR_CODES)});else items.push(entity)}
+ exclusions.sort((a,b)=>a.foodId.localeCompare(b.foodId));if(!items.length)return finish("empty",[],exclusions,[...(exclusions.length?["FILTER_ITEMS_EXCLUDED" as const]:[]),"FILTER_NO_MATCHES"],["FILTER_NO_MATCHES"]);return finish("matched",items,exclusions,exclusions.length?["FILTER_ITEMS_EXCLUDED"]:[],[]);
+}

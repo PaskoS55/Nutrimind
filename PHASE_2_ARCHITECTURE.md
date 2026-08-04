@@ -265,3 +265,8 @@ The user explicitly opts in and selects before the first eating occasion, one of
 Phase 3B1 is a schema-less pure presentation module outside nutrition calculation. It exposes exactly four equal-status abstract slots: `protein_source`, `carbohydrate_source`, `vegetables_fruit_berries`, and `fat_source`. The same immutable set appears in a closed native disclosure under every existing meal card only after a calculated Phase 3A1 plan exists.
 
 It contains no products, portions, composition data, restriction filtering, macro matching, timing derivation, persistence, transport, or medical interpretation. Phase 3A1 numbers and Phase 3A2 relations remain unchanged. Concrete-food hard exclusions are not implemented and require a separately approved Phase 3B2 boundary.
+# Phase 3B2B1 catalog-engine boundary
+
+Phase 3B2B1 adds a pure, versioned Russian food-catalog domain under `core/food-catalog`. It defines strict catalog-item and immutable reviewed-safety-profile schemas, complete 17-code allergen metadata, separate cross-contact/celiac/pattern dimensions, two-specialist review with deterministic 180-day expiry, whole-catalog fail-closed validation, capability evaluation and exact client-side filtering.
+
+There is no production catalog artifact or application import. Production restriction coverage remains `nutrimind.catalog-coverage.none.v1`, `catalogSupportedAllergenCodes` remains `[]`, concrete output remains unavailable, and Phase 3B1 abstract slots remain unchanged. The future `nutrimind.catalog-coverage.ru.v1` contract exists only in the engine and synthetic tests. Phase 3B2B2 content, product UI, portions/composition and menus remain separate future phases.
